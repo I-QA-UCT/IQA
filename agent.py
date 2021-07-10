@@ -161,7 +161,7 @@ class Agent:
             self.epsilon_anneal_episodes = -1
             self.epsilon = 0.0
 
-        self.nlp = spacy.load('en', disable=['ner', 'parser', 'tagger'])
+        self.nlp = spacy.load('en_core_web_sm')
         self.single_word_verbs = set(["inventory", "look", "wait"])
         self.two_word_verbs = set(["go"])
 

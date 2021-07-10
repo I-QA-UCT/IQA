@@ -65,9 +65,9 @@ episodic_counting_bonus:
   revisit_counting_lambda_anneal_to: 0.0
 
 model:
-  use_pretrained_embedding: True
+  use_pretrained_embedding: False
   word_embedding_size: 300
-  word_embedding_trainable: False
+  word_embedding_trainable: True
   char_embedding_size: 32
   char_embedding_trainable: True
   embedding_dropout: 0.
