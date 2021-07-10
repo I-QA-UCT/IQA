@@ -1,6 +1,6 @@
-# Interactive Language Learning by Question Answering
+# QAIT Task Extension - Interactive Question Answering in Text-Based Environments
 --------------------------------------------------------------------------------
-Code for EMNLP 2019 paper "Interactive Language Learning by Question Answering".
+Extension to Code for EMNLP 2019 paper "Interactive Language Learning by Question Answering".
 
 ## To install dependencies
 ```
@@ -14,6 +14,7 @@ pip install -U spacy
 python -m spacy download en
 pip install tqdm h5py visdom pyyaml
 conda install pytorch torchvision cudatoolkit=9.2 -c pytorch
+pip install gym==0.15.4 (Dependency Issue with Original Code)
 ```
 
 ## Test Set
