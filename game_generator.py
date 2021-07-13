@@ -6,12 +6,13 @@ import time
 import multiprocessing as mp
 from os.path import join as pjoin
 
+# Set of fake words
 with open("vocabularies/fake_words.txt") as f:
     FAKE_WORDS = f.read().lower().split("\n")
 FAKE_WORDS = set(FAKE_WORDS)
 
 
-# entities
+# set of all entities/objects
 with open("vocabularies/entities.txt") as f:
     ALL_ENTITIES = f.read().lower().split("\n")
 ALL_ENTITIES = set(ALL_ENTITIES)
@@ -21,6 +22,12 @@ ALL_ENTITIES = set(ALL_ENTITIES)
 
 
 def attribute_to_question(attr, object_name):
+    """
+    creates the text question for attribute and object.
+    :param attr: the attribute to create question about.
+    :param object_name: the object to ask about.
+    :return res: the question.
+    """
     if attr == "edible":
         res = "is " + object_name + " edible ?"
     elif attr == "drinkable":
@@ -46,6 +53,11 @@ def attribute_to_question(attr, object_name):
 
 
 def generate_location_question(entity_dict, seed=None):
+    """
+    Generate a random question about object location based on environment
+    :param entity_dict: dictionary of objects and their locations in environment. {entity: location}
+    :return : random question about object location in world
+    """
     # entity_dict is a dict of {entity: location}
     entities, locations = [], []
     for item in entity_dict:
@@ -68,6 +80,15 @@ def generate_location_question(entity_dict, seed=None):
 
 
 def generate_attribute_question(entity_dict, seed=None):
+    """
+    Generate random attribute question about environment
+    :param entity_dict: is a dict of {entity: attribute}
+
+    :return: text question about attribute.
+    :return answer: the answer to the question.
+    :return random_attr: the attribute chosen to ask about.
+    :return entity_: the object chosen to ask about.
+    """
     # entity_dict is a dict of {entity: attribute}
     if seed is not None:
         np.random.seed(seed)
@@ -111,6 +132,12 @@ def generate_attribute_question(entity_dict, seed=None):
 
 
 def generate_existence_question(entity_dict, seed=None):
+    """
+    Generate a random question about an objects existence.
+    :param entity_dict: dictionary about objects locations in the form {entity: location}
+
+    :return : text question about object existence.
+    """
     # entity_dict is a dict of {entity: location}
     entities_in_this_game = []
     for item in entity_dict:
@@ -131,11 +158,22 @@ def generate_existence_question(entity_dict, seed=None):
 
 
 def generate_qa_pairs(infos, question_type="location", seed=42):
+    """
+    Generate question answer pairs based on environment info and question type.
+
+    :param infos: Gym Environment infos dictionary containing specific information about the environment.
+    :param question_type: The type of question to generate.
+    :return output_questions: the output questions.
+    :return output_answers: the output answers.
+    :return reward_helper_info: dictionary containing relevant question and environment information for reward shaping. 
+    """
     output_questions, output_answers = [], []
     reward_helper_info = {"batch_size": len(infos["extra.object_locations"]),
                           "_entities": [],
                           "_answers": [],
                           "_attributes": []}
+    
+    # For each environment in the batch
     for i in range(len(infos["extra.object_locations"])):
         if question_type == "location":
             _q, _a, _e = generate_location_question(infos["extra.object_locations"][i], seed=seed * len(infos["extra.object_locations"]) + i)
@@ -158,6 +196,14 @@ def generate_qa_pairs(infos, question_type="location", seed=42):
 
 
 def generate_fixed_map_games(p_num, path="./", question_type="location", random_seed=None, num_object=None):
+    """
+    Generate a fixed map game
+    :param p_num: used in random name creation for game.
+    :param path: path to create gamefile.
+    :param question_type: used only to decide whether or not to use placeholders in game creation
+    :param num_object: number of objects to create in world.
+    :return gamefile: the directory of the created textworld gamefile
+    """
     if random_seed is None:
         np.random.seed()
     else:
@@ -182,6 +228,15 @@ def generate_fixed_map_games(p_num, path="./", question_type="location", random_
 
 
 def generate_random_map_games(p_num, path="./", question_type="location", random_seed=None, num_room=None, num_object=None):
+    """
+    Generate a random map game
+    :param p_num: used in random name creation for game.
+    :param path: path to create gamefile.
+    :param question_type: used only to decide whether or not to use placeholders in game creation
+    :param num_room: number of rooms to create in world.
+    :param num_object: number of objects to create in world.
+    :return gamefile: the directory of the created textworld gamefile
+    """
     if random_seed is None:
         np.random.seed()
     else:
@@ -217,7 +272,9 @@ def generate_random_map_games(p_num, path="./", question_type="location", random
 
 
 def game_generator_queue(path="./", random_map=False, question_type="location", max_q_size=30, wait_time=0.5, nb_worker=1):
-
+    """
+    create an asynchronous queue of game files for the unlimited games setting.
+    """
     q = mp.Queue()
     nb_worker = min(nb_worker, mp.cpu_count() - 1)
 
@@ -249,6 +306,14 @@ def game_generator_queue(path="./", random_map=False, question_type="location", 
 
 
 def game_generator(path="./", random_map=False, question_type="location", train_data_size=1):
+    """
+    Generate all the games for training.
+    :param path: the path where to create the games.
+    :param random_map: boolean for whether to create random map games or fixed.
+    :param question_type: the type of question of games to generate.
+    :param train_data_size: the number of training games to create.
+    :return res: a list of game file directory locations
+    """
     print("Generating %s games..." % str(train_data_size))
     res = set()
 

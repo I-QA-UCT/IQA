@@ -1,4 +1,5 @@
 import numpy as np
+from textworld.generator import data
 import generic
 import reward_helper
 import copy
@@ -8,6 +9,7 @@ from tqdm import tqdm
 from os.path import join as pjoin
 import gym
 import textworld
+from agent import Agent
 from textworld.gym import register_games, make_batch
 from query import process_facts
 
@@ -160,3 +162,20 @@ def evaluate(data_path, agent):
 
     print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
     return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)
+
+if (__name__ == "__main__"):
+    agent = Agent()
+
+    output_dir, data_dir = ".", "."
+    
+    if agent.load_pretrained:
+        if os.path.exists(output_dir + "/" + agent.experiment_tag + "_model.pt"):
+            agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
+            agent.update_target_net()
+        elif os.path.exists(data_dir + "/" + agent.load_from_tag + ".pt"):
+            agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
+            agent.update_target_net()
+        else:
+            print("Failed to load pretrained model... couldn't find the checkpoint file...")
+
+    evaluate(agent=agent,data_path="./")

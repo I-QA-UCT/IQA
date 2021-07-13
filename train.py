@@ -21,6 +21,7 @@ import game_generator
 import evaluate
 from query import process_facts
 
+# Information outputted from environment besides observation
 request_infos = textworld.EnvInfos(description=True,
                                    inventory=True,
                                    verbs=True,
@@ -38,15 +39,22 @@ request_infos = textworld.EnvInfos(description=True,
 
 
 def train(data_path):
+    """
+    Train the agent
+    :param data_path: path to directory where test set folder is 
+    """
 
     time_1 = datetime.datetime.now()
     agent = Agent()
 
     step_in_total = 0
+    
+    ### For storing values for printing
     running_avg_qa_reward = generic.HistoryScoreCache(capacity=500)
     running_avg_sufficient_info_reward = generic.HistoryScoreCache(capacity=500)
     running_avg_qa_loss = generic.HistoryScoreCache(capacity=500)
     running_avg_correct_state_loss = generic.HistoryScoreCache(capacity=500)
+    ###
 
     output_dir, data_dir = ".", "."
     json_file_name = agent.experiment_tag.replace(" ", "_")
@@ -75,6 +83,7 @@ def train(data_path):
         os.mkdir(pjoin(games_dir, agent.testset_path))
         copy_tree(pjoin(data_path, agent.testset_path), pjoin(games_dir, agent.testset_path))
 
+    # Set queue size for unlimited games mode
     if agent.train_data_size == -1:
         game_queue_size = agent.batch_size * 5
         game_queue = []
@@ -88,10 +97,15 @@ def train(data_path):
         all_training_games = game_generator.game_generator(path=games_dir, random_map=agent.random_map, question_type=agent.question_type, train_data_size=agent.train_data_size)
         all_training_games.sort()
         all_env_ids = None
+    
+    ### GAME LOOP
     while(True):
+        # Break when episode limit is reached
         if episode_no > agent.max_episode:
             break
+        # Change the seed for each episode
         np.random.seed(episode_no)
+       
         if agent.train_data_size == -1:
             # endless mode
             for _ in range(agent.batch_size):
@@ -118,9 +132,11 @@ def train(data_path):
         env_id = make_batch2(env_ids, parallel=True)
         env = gym.make(env_id)
         env.seed(episode_no)
-
+        
+        # Start game - get initial observation and infos
         obs, infos = env.reset()
         batch_size = len(obs)
+        
         # generate question-answer pairs here
         questions, answers, reward_helper_info = game_generator.generate_qa_pairs(infos, question_type=agent.question_type, seed=episode_no)
         print("====================================================================================", episode_no)
