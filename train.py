@@ -142,7 +142,9 @@ def train(data_path):
         print("====================================================================================", episode_no)
         print(questions[0], answers[0])
 
+        # Put agent into train mode - for pytorch
         agent.train()
+        # Prepare agent for game - resetting certain variables used in the agent
         agent.init(obs, infos)
 
         commands, last_facts, init_facts = [], [], []
@@ -191,6 +193,7 @@ def train(data_path):
 
             replay_info = [observation_strings_w_history, questions, possible_words] + replay_info
             admissible_commands = [set(item) - set(["look", "wait", "inventory"]) for item in infos["admissible_commands"]]
+            
             vc_rewards = [float(c in ac) for c, ac in zip(commands, admissible_commands)]
             valid_command_rewards_np.append(np.array(vc_rewards))
 

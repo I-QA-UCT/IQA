@@ -30,7 +30,9 @@ request_infos = textworld.EnvInfos(description=True,
 
 
 def evaluate(data_path, agent):
-
+    """
+    Evaluate an agent on a test set
+    """
     eval_data_path = pjoin(data_path, agent.eval_data_path)
 
     with open(eval_data_path) as f:

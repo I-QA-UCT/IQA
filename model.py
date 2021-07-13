@@ -38,6 +38,9 @@ class DQN(torch.nn.Module):
         print("number of trainable parameters: %s" % (amount))
 
     def read_config(self):
+        """
+        Load config file and set model parameters
+        """
         # model config
         model_config = self.config['model']
 
@@ -73,6 +76,9 @@ class DQN(torch.nn.Module):
         self.noisy_net = self.config['epsilon_greedy']['noisy_net']
 
     def _def_layers(self):
+        """
+        Create the layers of the DQN
+        """
 
         # word embeddings
         if self.use_pretrained_embedding:

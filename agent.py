@@ -51,6 +51,9 @@ class Agent:
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
     def load_config(self):
+        """
+        Load the config file and set all agent parameters accordingly 
+        """
         # word vocab
         with open("vocabularies/word_vocab.txt") as f:
             self.word_vocab = f.read().split("\n")
@@ -180,6 +183,9 @@ class Agent:
         self.online_net.eval()
 
     def update_target_net(self):
+        """
+        Update the target DQN - used for stability in training
+        """
         self.target_net.load_state_dict(self.online_net.state_dict())
 
     def reset_noise(self):
@@ -210,16 +216,17 @@ class Agent:
             print("Failed to load checkpoint...")
 
     def save_model_to_path(self, save_to):
+        """
+        Save pytorch agent model
+        """
         torch.save(self.online_net.state_dict(), save_to)
         print("Saved checkpoint to %s..." % (save_to))
 
     def init(self, obs, infos):
         """
         Prepare the agent for the upcoming games.
-
-        Arguments:
-            obs: Previous command's feedback for each game.
-            infos: Additional information for each game.
+        :param obs: Previous command's feedback for each game.
+        :param infos: Additional information for each game.
         """
         # reset agent, get vocabulary masks for verbs / adjectives / nouns
         batch_size = len(obs)
@@ -230,6 +237,13 @@ class Agent:
         self.naozi.reset(batch_size=batch_size)
 
     def get_agent_inputs(self, string_list):
+        """
+        process agent input strings into their word ids and char ids and convert to pytorch tensor.
+        :param string_list: list of string observations for each game in batch.
+        :return input_sentence: pytorch tensor of word id sentences padded for entire batch
+        :return input_sentence_char: pytorch tensor of char id sentences padded for entire batch
+        :return sentence_id_list: 2d list of word ids for each sentence. Each row is a different game in the batch.
+        """
         sentence_token_list = [item.split() for item in string_list]
         sentence_id_list = [_words_to_ids(tokens, self.word2id) for tokens in sentence_token_list]
         input_sentence_char = list_of_token_list_to_char_input(sentence_token_list, self.char2id)
@@ -240,17 +254,22 @@ class Agent:
 
     def get_game_info_at_certain_step(self, obs, infos):
         """
-        Get all needed info from game engine for training.
-        Arguments:
-            obs: Previous command's feedback for each game.
-            infos: Additional information for each game.
+        Get all needed info from game engine for training.  
+        :param obs: Previous command's feedback for each game.
+        :param infos: Additional information for each game.
+        :return observation_strings: processed observation string
+        :return [possible_verbs, possible_adjs, possible_nouns]: possible words the agent can use
         """
         batch_size = len(obs)
+        # The observation strings for each game in the batch processed to be normalised
         feedback_strings = [preproc(item, tokenizer=self.nlp) for item in obs]
+        # The description strings for each game in the batch processed to be normalised - i.e output of look command - description of current room
         description_strings = [preproc(item, tokenizer=self.nlp) for item in infos["description"]]
+        # Process the two strings together for the agent to use
         observation_strings = [d + " <|> " + fb if fb != d else d + " <|> hello" for fb, d in zip(feedback_strings, description_strings)]
-
+        # get objects in agent inventory
         inventory_strings = [preproc(item, tokenizer=self.nlp) for item in infos["inventory"]]
+        # Get words that make sense in context
         local_word_list = [obs.split() + inv.split() for obs, inv in zip(observation_strings, inventory_strings)]
 
         directions = ["east", "west", "north", "south"]
@@ -259,7 +278,7 @@ class Agent:
             possible_verbs = [["go", "inventory", "wait", "open", "examine"] for _ in range(batch_size)]
         else:
             possible_verbs = [list(set(item) - set(["", "look"])) for item in infos["verbs"]]
-
+        
         possible_adjs, possible_nouns = [], []
         for i in range(batch_size):
             object_nouns = [item.split()[-1] for item in infos["object_nouns"][i]]
@@ -270,12 +289,28 @@ class Agent:
         return observation_strings, [possible_verbs, possible_adjs, possible_nouns]
 
     def get_state_strings(self, infos):
+        """
+        Get strings about environment:
+                                    - the description of the current room the agent is in.
+                                    - what is in the agents inventory.
+        Process these strings together and return.
+        :param infos: the game environment infos object.
+        :return observation_strings: the strings concatenated together
+        """
         description_strings = infos["description"]
         inventory_strings = infos["inventory"]
         observation_strings = [_d + _i for (_d, _i) in zip(description_strings, inventory_strings)]
+        
         return observation_strings
 
     def get_local_word_masks(self, possible_words):
+        """
+        Get masks for vocab of possible verbs, noun, adjectives 
+        i.e an array of size vocab that contains zeroes except 
+        in the indexes of the possible words where the array contains a one.
+        :param possible_words: array of three items -  possible_verbs, possible_adjs, possible_nouns
+        :return [verb_mask, adj_mask, noun_mask]: masks of each of the word lists
+        """
         possible_verbs, possible_adjs, possible_nouns = possible_words
         batch_size = len(possible_verbs)
 
@@ -297,6 +332,9 @@ class Agent:
         return [verb_mask, adj_mask, noun_mask]
 
     def get_match_representations(self, input_observation, input_observation_char, input_quest, input_quest_char, use_model="online"):
+        """
+        I believe this is the encoding function
+        """
         model = self.online_net if use_model == "online" else self.target_net
         description_representation_sequence, description_mask = model.representation_generator(input_observation, input_observation_char)
         quest_representation_sequence, quest_mask = model.representation_generator(input_quest, input_quest_char)
@@ -314,7 +352,7 @@ class Agent:
         """
         model = self.online_net if use_model == "online" else self.target_net
         match_representation_sequence = self.get_match_representations(input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
-        action_ranks = model.action_scorer(match_representation_sequence, word_masks)  # list of 3 tensors
+        action_ranks = model.action_scorer(match_representation_sequence, word_masks)  # list of 3 tensors size of vocab
         return action_ranks
 
     def choose_maxQ_command(self, action_ranks, word_mask=None):
@@ -386,6 +424,9 @@ class Agent:
             return " ".join([self.word_vocab[verb], self.word_vocab[adj], self.word_vocab[noun]])
 
     def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words):
+        """
+        choose and action randomly
+        """
         with torch.no_grad():
             batch_size = len(obs)
             word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
