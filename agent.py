@@ -9,10 +9,10 @@ import numpy as np
 
 import torch
 import torch.nn.functional as F
-
+from torch.distributions import Categorical
 import command_generation_memory
 import qa_memory
-from model import DQN
+from model import ActorCritic, DQN
 from layers import compute_mask, NegativeLogLoss
 from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences
 from generic import max_len, ez_gather_dim_1, ObservationPool
@@ -26,24 +26,33 @@ class Agent:
             self.config = yaml.safe_load(reader)
         print(self.config)
         self.load_config()
+        
+        if not self.a2c:
+            self.online_net = DQN(config=self.config,
+                                word_vocab=self.word_vocab,
+                                char_vocab=self.char_vocab,
+                                answer_type=self.answer_type)
+            self.target_net = DQN(config=self.config,
+                                word_vocab=self.word_vocab,
+                                char_vocab=self.char_vocab,
+                                answer_type=self.answer_type)
+            self.online_net.train()
+            self.target_net.train()
+            self.update_target_net()
+            for param in self.target_net.parameters():
+                param.requires_grad = False
 
-        self.online_net = DQN(config=self.config,
-                              word_vocab=self.word_vocab,
-                              char_vocab=self.char_vocab,
-                              answer_type=self.answer_type)
-        self.target_net = DQN(config=self.config,
-                              word_vocab=self.word_vocab,
-                              char_vocab=self.char_vocab,
-                              answer_type=self.answer_type)
-        self.online_net.train()
-        self.target_net.train()
-        self.update_target_net()
-        for param in self.target_net.parameters():
-            param.requires_grad = False
-
-        if self.use_cuda:
-            self.online_net.cuda()
-            self.target_net.cuda()
+            if self.use_cuda:
+                self.online_net.cuda()
+                self.target_net.cuda()
+        else:
+            # Create the actor critic model
+            self.online_net = ActorCritic(config=self.config,
+                                word_vocab=self.word_vocab,
+                                char_vocab=self.char_vocab,
+                                answer_type=self.answer_type)
+        
+        
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
@@ -86,6 +95,16 @@ class Agent:
         self.eval_batch_size = self.config['evaluate']['batch_size']
         self.eval_max_nb_steps_per_episode = self.config['evaluate']['max_nb_steps_per_episode']
 
+
+         # dueling networks
+        self.dueling_networks = self.config['dueling_networks']
+
+        # double dqn
+        self.double_dqn = self.config['double_dqn']
+
+        # A2C
+        self.a2c = self.config['a2c']
+
         # Set the random seed manually for reproducibility.
         self.random_seed = self.config['general']['random_seed']
         np.random.seed(self.random_seed)
@@ -120,7 +139,10 @@ class Agent:
         # replay buffer and updates
         self.discount_gamma = self.config['replay']['discount_gamma']
         self.replay_batch_size = self.config['replay']['replay_batch_size']
-        self.command_generation_replay_memory = command_generation_memory.PrioritizedReplayMemory(self.config['replay']['replay_memory_capacity'],
+        if self.a2c:
+            self.command_generation_replay_memory = command_generation_memory.SingleEpisodeStorage()
+        else:
+            self.command_generation_replay_memory = command_generation_memory.PrioritizedReplayMemory(self.config['replay']['replay_memory_capacity'],
                                                                                                   priority_fraction=self.config['replay']['replay_memory_priority_fraction'],
                                                                                                   discount_gamma=self.discount_gamma)
         self.qa_replay_memory = qa_memory.PrioritizedReplayMemory(self.config['replay']['replay_memory_capacity'],
@@ -138,11 +160,7 @@ class Agent:
             self.support = self.support.cuda()
         self.delta_z = (self.v_max - self.v_min) / (self.atoms - 1)
 
-        # dueling networks
-        self.dueling_networks = self.config['dueling_networks']
-
-        # double dqn
-        self.double_dqn = self.config['double_dqn']
+       
 
         # counting reward
         self.revisit_counting_lambda_anneal_episodes = self.config['episodic_counting_bonus']['revisit_counting_lambda_anneal_episodes']
@@ -357,6 +375,31 @@ class Agent:
         action_ranks = model.action_scorer(match_representation_sequence, word_masks)  # list of 3 tensors size of vocab
         return action_ranks
 
+    def choose_probability_command(self, action_ranks, word_mask=None):
+        """
+        Generate a command by sampling from action probability distributions
+        """
+        
+        action_indices = []
+        action_log_probs = []
+        for i in range(len(action_ranks)):
+            batch_indices = []
+            batch_log_probs =[]
+            ar = action_ranks[i]
+            
+            for j in range(action_ranks[i].shape[0]):
+                dist = Categorical(ar[j])
+                
+                action = dist.sample()
+                batch_indices.append(action)
+                batch_log_probs.append(dist.log_prob(action))
+
+            action_indices.append(torch.tensor(batch_indices)) 
+            action_log_probs.append(torch.tensor(batch_log_probs)) 
+
+        return action_indices , action_log_probs
+
+
     def choose_maxQ_command(self, action_ranks, word_mask=None):
         """
         Generate a command by maximum q values, for epsilon greedy.
@@ -370,6 +413,7 @@ class Agent:
             if word_mask is not None:
                 assert word_mask[i].size() == ar.size(), (word_mask[i].size().shape, ar.size())
                 ar = ar * word_mask[i]
+            
             action_indices.append(torch.argmax(ar, -1))  # batch
         return action_indices
 
@@ -466,6 +510,7 @@ class Agent:
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
             chosen_indices = word_indices_maxq
+            
             chosen_strings = self.get_chosen_strings(chosen_indices)
 
             for i in range(batch_size):
@@ -499,29 +544,18 @@ class Agent:
         :return chosen_strings: the list of commands for each game in batch.
         :return replay_info: contains the chosen word indices in vocab of commands generated and whether or not agents in the batch are still interacting.
         """
-        with torch.no_grad():
-            if self.mode == "eval":
-                return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
-            if random:
-                return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+        if self.a2c:
             batch_size = len(obs)
-
+            
             local_word_masks_np = self.get_local_word_masks(possible_words)
             local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
     
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
-            action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
-            word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
-            word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
-    
-            # random number for epsilon greedy
-            rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size,))
-            less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
-            greater_than_epsilon = 1.0 - less_than_epsilon
-            less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='long')
-            greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='long')
-            chosen_indices = [less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
+            probs, value = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+            
+            chosen_indices,action_log_probs = self.choose_probability_command(probs)
+                
             chosen_strings = self.get_chosen_strings(chosen_indices)
 
             for i in range(batch_size):
@@ -533,12 +567,115 @@ class Agent:
                 if self.prev_actions[-1][i] == "wait":
                     self.prev_step_is_still_interacting[i] = 0.0
             # previous step is still interacting, this is because DQN requires one step extra computation
-            replay_info = [chosen_indices, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
-
+            
+            replay_info = [chosen_indices,value,action_log_probs, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+            
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
 
+        else:
+            with torch.no_grad():
+                if self.mode == "eval":
+                    return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                if random:
+                    return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                batch_size = len(obs)
+            
+                local_word_masks_np = self.get_local_word_masks(possible_words)
+                local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
+        
+                # generate commands for one game step, epsilon greedy is applied, i.e.,
+                # there is epsilon of chance to generate random commands
+                action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+                
+                if self.a2c:
+                    probs, value = action_ranks
+                    chosen_indices,action_log_probs = self.choose_probability_command(probs)
+                    
+                else:
+                    word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
+                    word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
+            
+                    # random number for epsilon greedy
+                    rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size,))
+                    less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
+                    greater_than_epsilon = 1.0 - less_than_epsilon
+                    less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='long')
+                    greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='long')
+                    chosen_indices = [less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
+                
+                
+                chosen_strings = self.get_chosen_strings(chosen_indices)
+
+                for i in range(batch_size):
+                    if chosen_strings[i] == "wait":
+                        self.not_finished_yet[i] = 0.0
+
+                # info for replay memory
+                for i in range(batch_size):
+                    if self.prev_actions[-1][i] == "wait":
+                        self.prev_step_is_still_interacting[i] = 0.0
+                # previous step is still interacting, this is because DQN requires one step extra computation
+                if self.a2c:
+                    replay_info = [chosen_indices,value,action_log_probs, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+                else:
+                    replay_info = [chosen_indices, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+            
+                # cache new info in current game step into caches
+                self.prev_actions.append(chosen_strings)
+                return chosen_strings, replay_info
+
+    def get_actor_critic_loss(self):
+        """
+        NOT CORRECT FOR BATCHES YET
+        """
+        data = self.command_generation_replay_memory.get_batch()
+        if data is None:
+            return None
+
+        obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values ,action_log_probs,is_finals= data
+       
+        batch_size = len(action_log_probs[0])
+
+        input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
+        input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
+        
+
+        policy_losses = []
+        value_losses = []
+        returns = []
+        Gt = torch.tensor(0.0)
+     
+        # calculate the true value using rewards returned from the environment
+        for i,reward in enumerate(rewards[::-1]):
+            if is_finals[::-1][i]:
+                Gt = torch.tensor(0.0)
+            Gt = reward + self.discount_gamma * Gt
+            returns.insert(0, Gt)
+
+        returns = torch.tensor(returns)
+        
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        
+        state_values = torch.stack(state_values)
+       
+        advantage = returns - state_values
+
+        # calculate actor (policy) loss
+        policy_losses = (-torch.stack(action_log_probs) * advantage.detach()).mean()
+
+        # calculate critic (value) loss using model loss function
+        value_losses = (F.smooth_l1_loss(state_values.squeeze(-1), returns))
+        # reset gradients
+        self.optimizer.zero_grad()
+
+        # sum up all the values of policy_losses and value_losses
+        loss = policy_losses + value_losses
+        self.command_generation_replay_memory.clear()
+        return loss
+
+    
     def get_dqn_loss(self):
         """
         Update neural model in agent. In this example we follow algorithm
@@ -631,7 +768,11 @@ class Agent:
         :return : the mean loss
         """
         # update neural model by replaying snapshots in replay memory
-        interaction_loss = self.get_dqn_loss()
+        if self.a2c:
+            interaction_loss = self.get_actor_critic_loss()
+        else:
+            interaction_loss = self.get_dqn_loss()
+
         if interaction_loss is None:
             return None
         loss = interaction_loss * self.interaction_loss_lambda
@@ -759,7 +900,7 @@ class Agent:
 
     def finish_of_episode(self, episode_no, batch_size):
         # Update target networt
-        if (episode_no + batch_size) % self.target_net_update_frequency <= episode_no % self.target_net_update_frequency:
+        if (episode_no + batch_size) % self.target_net_update_frequency <= episode_no % self.target_net_update_frequency and not self.a2c:
             self.update_target_net()
         # decay lambdas
         if episode_no < self.learn_start_from_this_episode:

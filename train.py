@@ -174,7 +174,7 @@ def train(data_path):
         # This tells the agent to act randomly until episode number exceeds the start to learn threshold. 
         # noisy nets are used in rainbow algorithm which decide on the randomness of actions so this must 
         # be false if noisy nets are used.
-        act_randomly = False if agent.noisy_net else episode_no < agent.learn_start_from_this_episode
+        act_randomly = False if agent.noisy_net or agent.a2c else episode_no < agent.learn_start_from_this_episode
         
         # push init state into counting reward dict - this is used for exploration bonus...?
         state_strings = agent.get_state_strings(infos)
@@ -237,11 +237,12 @@ def train(data_path):
 
             # If episode number reacheas the start to learn threshold - start optimizing weights
             if episode_no >= agent.learn_start_from_this_episode and step_in_total % agent.update_per_k_game_steps == 0:
-                # Update agent weights
-                interaction_loss = agent.update_interaction()
-                # Log loss
-                if interaction_loss is not None:
-                    running_avg_correct_state_loss.push(interaction_loss)
+                if not agent.a2c:
+                    # Update agent weights
+                    interaction_loss = agent.update_interaction()
+                    # Log loss
+                    if interaction_loss is not None:
+                        running_avg_correct_state_loss.push(interaction_loss)
                 # update question answerer
                 qa_loss = agent.update_qa()
                 # Log loss
@@ -258,7 +259,12 @@ def train(data_path):
                 break
         
         ### End of action peforming loop - Now performs Question Answering
-
+        if agent.a2c and episode_no>agent.learn_start_from_this_episode:
+            interaction_loss = agent.update_interaction()
+            # Log loss
+            if interaction_loss is not None:
+                running_avg_correct_state_loss.push(interaction_loss)
+    
         print(" / ".join(print_cmds))
         # The agent has exhausted all steps, now answer question.
         # Get most recent observation
@@ -327,11 +333,17 @@ def train(data_path):
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
-                batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                if agent.a2c:
+                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs, _, batch_rewards = transition_cache[i]
+                else:
+                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
-                agent.command_generation_replay_memory.push(is_prior, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                if agent.a2c:
+                    agent.command_generation_replay_memory.push(batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],batch_action_log_probs[b], is_final)
+                else:
+                    agent.command_generation_replay_memory.push(is_prior, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
 
