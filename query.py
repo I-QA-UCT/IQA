@@ -66,6 +66,14 @@ def find_predicates_in_inventory(state):
 
 
 def process_facts(prev_facts, info_game, info_facts, info_last_action, cmd):
+    """
+    process game knowledge base facts due to new action command - not exactly sure how it works but used in the reward helper for existence and attribute questions
+    :param prev_facts: Previous facts given.
+    :param info_game: the game info from the environment i.e the knowledge base from info object
+    :param info_facts: facts from game environment info object
+    :param info_last_action: last action from info object
+    :param cmd: the command performed
+    """
     kb = textworld.Game.deserialize(info_game).kb
     if prev_facts is None:
         facts = set()
@@ -84,5 +92,5 @@ def process_facts(prev_facts, info_game, info_facts, info_last_action, cmd):
 
     # Always add facts in sight.
     facts |= set(find_predicates_in_scope(State(kb.logic, info_facts)))
-
+    
     return facts

@@ -159,12 +159,12 @@ def generate_existence_question(entity_dict, seed=None):
 
 def generate_qa_pairs(infos, question_type="location", seed=42):
     """
-    Generate question answer pairs based on environment info and question type.
+    Generate question answer pairs based on environment info and question type for each game in batch.
 
     :param infos: Gym Environment infos dictionary containing specific information about the environment.
     :param question_type: The type of question to generate.
-    :return output_questions: the output questions.
-    :return output_answers: the output answers.
+    :return output_questions: list of the output questions.
+    :return output_answers: list of the output answers.
     :return reward_helper_info: dictionary containing relevant question and environment information for reward shaping. 
     """
     output_questions, output_answers = [], []

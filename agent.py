@@ -254,7 +254,7 @@ class Agent:
 
     def get_game_info_at_certain_step(self, obs, infos):
         """
-        Get all needed info from game engine for training.  
+        Get the processed observation string and possible words to use.
         :param obs: Previous command's feedback for each game.
         :param infos: Additional information for each game.
         :return observation_strings: processed observation string
@@ -291,11 +291,13 @@ class Agent:
     def get_state_strings(self, infos):
         """
         Get strings about environment:
-                                    - the description of the current room the agent is in.
-                                    - what is in the agents inventory.
+        1. the description of the current room the agent is in.
+        2. what is in the agents inventory.
+
         Process these strings together and return.
+        
         :param infos: the game environment infos object.
-        :return observation_strings: the strings concatenated together
+        :return observation_strings: the strings concatenated together for each game in the batch
         """
         description_strings = infos["description"]
         inventory_strings = infos["inventory"]
@@ -394,7 +396,8 @@ class Agent:
     def get_chosen_strings(self, chosen_indices):
         """
         Turns list of word indices into actual command strings.
-        chosen_indices: Word indices chosen by model.
+        :param chosen_indices: Word indices chosen by model.
+        :return res_str: actual text command
         """
         chosen_indices_np = [to_np(item) for item in chosen_indices]
         res_str = []
@@ -484,6 +487,17 @@ class Agent:
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
+
+        :param obs: list of text observations for each game in batch.
+        :param infos: textworld game infos object.
+        :param input_observation: observation strings processed into pytorch tensor.
+        :param input_observation_char: observation chars processed into pytorch tensor.
+        :param input_quest: questions processed into pytorch tensor.
+        :param input_quest_char: questions chars processed into pytorch tensor.
+        :param possible_words: the possible words and agent can use based on environment.
+        :param random: boolean to act randomly.
+        :return chosen_strings: the list of commands for each game in batch.
+        :return replay_info: contains the chosen word indices in vocab of commands generated and whether or not agents in the batch are still interacting.
         """
         with torch.no_grad():
             if self.mode == "eval":
@@ -612,6 +626,10 @@ class Agent:
         return loss
 
     def update_interaction(self):
+        """
+        Calculate the DQN loss, backprop to calculate the gradients and optimize the network.
+        :return : the mean loss
+        """
         # update neural model by replaying snapshots in replay memory
         interaction_loss = self.get_dqn_loss()
         if interaction_loss is None:
@@ -627,6 +645,15 @@ class Agent:
         return to_np(torch.mean(interaction_loss))
 
     def answer_question(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online"):
+        """
+        Answer question based on observations.
+        :param input_observation: observation strings processed into pytorch tensor.
+        :param input_observation_char: observation chars processed into pytorch tensor.
+        :param observation_id_list: list of observation strings
+        :param input_quest: questions processed into pytorch tensor.
+        :param input_quest_char: questions chars processed into pytorch tensor.
+        :param use_model: which model to use.
+        """
         # first pad answerer_input, and get the mask
         model = self.online_net if use_model == "online" else self.target_net
         batch_size = len(observation_id_list)
@@ -667,6 +694,7 @@ class Agent:
         for i in range(batch_size):
             non_zero_words.append(list(set(observation_id_list[i])))
         vocab_mask = torch.ne(vocab_distribution, 0).float()
+        
         return vocab_distribution, non_zero_words, vocab_mask
 
     def point_maxq_position(self, vocab_distribution, mask):
@@ -706,6 +734,7 @@ class Agent:
         groundtruth = to_pt(answer_position, self.use_cuda)  # batch
 
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
+        
         input_observation, input_observation_char, observation_id_list =  self.get_agent_inputs(observation_list)
 
         answer_distribution, _, _ = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online")  # batch x vocab
@@ -746,6 +775,12 @@ class Agent:
         self.binarized_counter_dict = [{} for _ in range(batch_size)]
 
     def get_binarized_count(self, observation_strings, update=True):
+        """
+        for every new state visited, a reward is given - this is used to check if a state has been visited before.
+        :param observation_strings: the observation strings for each game in batch.
+        :param update: boolean to decide whether or not to update the dictionary of states visited.
+        :return count_rewards: list of rewards for the games in batch of wether or not the state visited is new. will always only be 1 or 0.
+        """
         count_rewards = []
         batch_size = len(observation_strings)
         for i in range(batch_size):

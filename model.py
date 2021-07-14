@@ -198,6 +198,10 @@ class DQN(torch.nn.Module):
         return action_ranks
 
     def answer_question(self, matching_representation_sequence, doc_mask):
+        """
+        Answer question based on representation
+        :return prediction distribution.
+        """
         square_mask = torch.bmm(doc_mask.unsqueeze(-1), doc_mask.unsqueeze(1))  # batch x time x time
         M0 = matching_representation_sequence
         M1 = M0
