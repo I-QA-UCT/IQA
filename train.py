@@ -334,14 +334,14 @@ def train(data_path):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
                 if agent.a2c:
-                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs, _, batch_rewards = transition_cache[i]
+                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                 else:
                     batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
                 if agent.a2c:
-                    agent.command_generation_replay_memory.push(batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],batch_action_log_probs[b], is_final)
+                    agent.command_generation_replay_memory.push(batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
                 else:
                     agent.command_generation_replay_memory.push(is_prior, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:

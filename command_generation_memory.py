@@ -5,7 +5,7 @@ import torch
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
-PolicyTransition = namedtuple('Transition', ('observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs', 'is_final'))
+PolicyTransition = namedtuple('Transition', ('observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
 
 class SingleEpisodeStorage():
 
@@ -21,10 +21,10 @@ class SingleEpisodeStorage():
 
     def get_batch(self):
         
-        obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,is_finals = [], [], [], [],[],[],[],[]
+        obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[]
     
         for item in self.batch_episode_memory:
-            obs, quest, possible_words, word_indices, reward, state_value, action_log_probs, is_final = item
+            obs, quest, possible_words, word_indices, reward, state_value, action_log_probs,action_entropies, is_final = item
             
             obs_list.append(obs)
             quest_list.append(quest)
@@ -33,10 +33,11 @@ class SingleEpisodeStorage():
             reward_list.append(reward)
             state_values.append(state_value)
             action_log_probs_list.append(action_log_probs)
+            action_entropies_list.append(action_entropies)
             is_finals.append(is_final)
            
         
-        return obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,is_finals
+        return obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
 
            
 

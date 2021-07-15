@@ -347,8 +347,8 @@ class ActorCritic(torch.nn.Module):
 
         action_scorers = []
 
-        for _ in range(self.generate_length):
-            action_scorers.append(linear_function(self.action_scorer_hidden_dim, action_scorer_output_size))
+        for i in range(self.generate_length):
+            action_scorers.append(linear_function(self.action_scorer_hidden_dim+i*action_scorer_output_size, action_scorer_output_size))
         
         self.action_scorers = torch.nn.ModuleList(action_scorers)
         self.critic = linear_function(self.action_scorer_hidden_dim,1)
@@ -390,14 +390,22 @@ class ActorCritic(torch.nn.Module):
         state_representation, _ = torch.max(state_representation_sequence, 1)
         hidden = self.action_scorer_shared_linear(state_representation)  # batch x hid
         hidden = torch.relu(hidden)  # batch x hid
-    
+
         action_probs = []
-        for i in range(self.generate_length):
-            a_rank = self.action_scorers[i](hidden)  # batch x n_vocab
+        a_rank = self.action_scorers[0](hidden)  # batch x n_vocab
            
+        q = masked_softmax(a_rank,word_masks[0])  #batch x vocab
+        
+        action_probs.append(q)
+        prev = q
+        
+        for i in range(1,self.generate_length):
+            a_rank = self.action_scorers[i](torch.cat((hidden,prev),dim=1))  # batch x n_vocab
+            
             q = masked_softmax(a_rank,word_masks[i])  #batch x vocab
             
             action_probs.append(q)
+            prev = torch.cat((prev,q),dim=1)
 
         value = self.critic(hidden)
 

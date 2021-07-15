@@ -19,6 +19,9 @@ from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
 
 
+# TODO fix actor critic loss function to work for batches
+# TODO fix actor critic to work on cuda
+
 class Agent:
     def __init__(self):
         self.mode = "train"
@@ -51,6 +54,8 @@ class Agent:
                                 word_vocab=self.word_vocab,
                                 char_vocab=self.char_vocab,
                                 answer_type=self.answer_type)
+            if self.use_cuda:
+                self.online_net.cuda()
         
         
 
@@ -104,6 +109,8 @@ class Agent:
 
         # A2C
         self.a2c = self.config['a2c']
+        self.entropy_coeff = self.config['entropy_coefficient']
+
 
         # Set the random seed manually for reproducibility.
         self.random_seed = self.config['general']['random_seed']
@@ -382,22 +389,26 @@ class Agent:
         
         action_indices = []
         action_log_probs = []
+        action_entropies = []
         for i in range(len(action_ranks)):
-            batch_indices = []
             batch_log_probs =[]
             ar = action_ranks[i]
+            batch_indices_dist= torch.distributions.Categorical(ar)
+            batch_indices = batch_indices_dist.sample()
             
-            for j in range(action_ranks[i].shape[0]):
-                dist = Categorical(ar[j])
-                
-                action = dist.sample()
-                batch_indices.append(action)
-                batch_log_probs.append(dist.log_prob(action))
+            batch_log_probs = batch_indices_dist.log_prob(batch_indices)
+            batch_entropy = batch_indices_dist.entropy()
+            
+            if self.use_cuda:
+                batch_indices = batch_indices.cuda()
+                batch_log_probs = batch_log_probs.cuda()
+                batch_entropy = batch_entropy.cuda()
 
-            action_indices.append(torch.tensor(batch_indices)) 
-            action_log_probs.append(torch.tensor(batch_log_probs)) 
-
-        return action_indices , action_log_probs
+            action_indices.append(batch_indices) 
+            action_log_probs.append(batch_log_probs) 
+            action_entropies.append(batch_entropy) 
+       
+        return action_indices , action_log_probs, action_entropies
 
 
     def choose_maxQ_command(self, action_ranks, word_mask=None):
@@ -435,6 +446,7 @@ class Agent:
                     indices.append(np.random.choice(mask_ids))
                 indices = np.array(indices)
             action_indices.append(to_pt(indices, self.use_cuda))  # batch
+        
         return action_indices
 
     def get_chosen_strings(self, chosen_indices):
@@ -448,6 +460,7 @@ class Agent:
         batch_size = chosen_indices_np[0].shape[0]
         for i in range(batch_size):
             verb, adj, noun = chosen_indices_np[0][i], chosen_indices_np[1][i], chosen_indices_np[2][i]
+            
             res_str.append(self.word_ids_to_commands(verb, adj, noun))
         return res_str
 
@@ -553,9 +566,10 @@ class Agent:
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
             probs, value = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+            value = value.permute(1,0).squeeze(0)
             
-            chosen_indices,action_log_probs = self.choose_probability_command(probs)
-                
+            chosen_indices,action_log_probs,action_entropies = self.choose_probability_command(probs)
+           
             chosen_strings = self.get_chosen_strings(chosen_indices)
 
             for i in range(batch_size):
@@ -568,7 +582,7 @@ class Agent:
                     self.prev_step_is_still_interacting[i] = 0.0
             # previous step is still interacting, this is because DQN requires one step extra computation
             
-            replay_info = [chosen_indices,value,action_log_probs, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+            replay_info = [chosen_indices,value,action_log_probs,action_entropies, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
             
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
@@ -589,21 +603,16 @@ class Agent:
                 # there is epsilon of chance to generate random commands
                 action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
                 
-                if self.a2c:
-                    probs, value = action_ranks
-                    chosen_indices,action_log_probs = self.choose_probability_command(probs)
-                    
-                else:
-                    word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
-                    word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
-            
-                    # random number for epsilon greedy
-                    rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size,))
-                    less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
-                    greater_than_epsilon = 1.0 - less_than_epsilon
-                    less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='long')
-                    greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='long')
-                    chosen_indices = [less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
+                word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
+                word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
+        
+                # random number for epsilon greedy
+                rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size,))
+                less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
+                greater_than_epsilon = 1.0 - less_than_epsilon
+                less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='long')
+                greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='long')
+                chosen_indices = [less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
                 
                 
                 chosen_strings = self.get_chosen_strings(chosen_indices)
@@ -617,10 +626,9 @@ class Agent:
                     if self.prev_actions[-1][i] == "wait":
                         self.prev_step_is_still_interacting[i] = 0.0
                 # previous step is still interacting, this is because DQN requires one step extra computation
-                if self.a2c:
-                    replay_info = [chosen_indices,value,action_log_probs, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
-                else:
-                    replay_info = [chosen_indices, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+               
+                
+                replay_info = [chosen_indices, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
             
                 # cache new info in current game step into caches
                 self.prev_actions.append(chosen_strings)
@@ -628,50 +636,66 @@ class Agent:
 
     def get_actor_critic_loss(self):
         """
-        NOT CORRECT FOR BATCHES YET
+        
         """
         data = self.command_generation_replay_memory.get_batch()
         if data is None:
             return None
 
-        obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values ,action_log_probs,is_finals= data
-       
-        batch_size = len(action_log_probs[0])
+        _, _, _, _, rewards, state_values ,action_log_probs,action_entropies,is_finals= data
 
-        input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-        input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
+       
+
+        # input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
+        # input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
         
 
         policy_losses = []
         value_losses = []
         returns = []
-        Gt = torch.tensor(0.0)
+        Gt = 0.0
      
         # calculate the true value using rewards returned from the environment
         for i,reward in enumerate(rewards[::-1]):
             if is_finals[::-1][i]:
-                Gt = torch.tensor(0.0)
+                Gt = 0.0
             Gt = reward + self.discount_gamma * Gt
             returns.insert(0, Gt)
 
-        returns = torch.tensor(returns)
+        returns = to_pt(np.array(returns),self.use_cuda,"float")
         
         returns = (returns - returns.mean()) / (returns.std() + 1e-8)
         
         state_values = torch.stack(state_values)
        
-        advantage = returns - state_values
-
+        advantage = returns - state_values*(1-to_pt(np.array(is_finals,dtype=bool),self.use_cuda))
+        concat_probs = []
+        concat_entropies = []
+        
+        for i,logs in enumerate(action_log_probs):
+            concat_entropies.append(torch.stack(action_entropies[i]))
+            concat_probs.append(torch.stack(logs))
+        
+        entropy_loss = torch.stack(concat_entropies).mean()
+        
         # calculate actor (policy) loss
-        policy_losses = (-torch.stack(action_log_probs) * advantage.detach()).mean()
+        policy_losses = torch.tensor(0.0)
 
-        # calculate critic (value) loss using model loss function
-        value_losses = (F.smooth_l1_loss(state_values.squeeze(-1), returns))
+        if self.use_cuda:
+            policy_losses = policy_losses.cuda()
+            entropy_loss = entropy_loss.cuda()
+
+        for i in range(3):
+            policy_losses += (-torch.stack(concat_probs)[:,i] * advantage.detach()).mean()
+            
+       
+        value_losses = 0.5 * advantage.pow(2).mean()
         # reset gradients
         self.optimizer.zero_grad()
 
         # sum up all the values of policy_losses and value_losses
-        loss = policy_losses + value_losses
+        loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
+        
         self.command_generation_replay_memory.clear()
         return loss
 
