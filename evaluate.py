@@ -173,10 +173,12 @@ if (__name__ == "__main__"):
     if agent.load_pretrained:
         if os.path.exists(output_dir + "/" + agent.experiment_tag + "_model.pt"):
             agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
-            agent.update_target_net()
+            if not agent.a2c:
+                agent.update_target_net()
         elif os.path.exists(data_dir + "/" + agent.load_from_tag + ".pt"):
             agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
-            agent.update_target_net()
+            if not agent.a2c:
+                agent.update_target_net()
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
