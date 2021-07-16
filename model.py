@@ -407,9 +407,9 @@ class ActorCritic(torch.nn.Module):
             action_probs.append(q)
             prev = torch.cat((prev,q),dim=1)
 
-        value = self.critic(hidden)
+        state_value = self.critic(hidden)
 
-        return action_probs , value
+        return action_probs , state_value
 
     def answer_question(self, matching_representation_sequence, doc_mask):
         """

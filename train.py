@@ -264,7 +264,7 @@ def train(data_path):
             # Log loss
             if interaction_loss is not None:
                 running_avg_correct_state_loss.push(interaction_loss)
-    
+        
         print(" / ".join(print_cmds))
         # The agent has exhausted all steps, now answer question.
         # Get most recent observation
@@ -334,6 +334,7 @@ def train(data_path):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
                 if agent.a2c:
+                    
                     batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                 else:
                     batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
