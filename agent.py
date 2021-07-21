@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import command_generation_memory
 import qa_memory
-from model import ActorCritic, DQN
+from model import ActorCritic, DQN, ICM
 from layers import compute_mask, NegativeLogLoss
 from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences
 from generic import max_len, ez_gather_dim_1, ObservationPool
@@ -56,6 +56,9 @@ class Agent:
                                           answer_type=self.answer_type)
             if self.use_cuda:
                 self.online_net.cuda()
+
+        if self.icm:
+            self.curiosity_module = ICM(self.config,self.config['model']['block_hidden_dim'],3*self.config['model']['block_hidden_dim'])
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
@@ -109,6 +112,10 @@ class Agent:
         # A2C
         self.a2c = self.config['a2c']['enable']
         self.entropy_coeff = self.config['a2c']['entropy_coefficient']
+
+        # ICM
+        self.icm = self.config['icm']['enable']
+        
 
         # Set the random seed manually for reproducibility.
         self.random_seed = self.config['general']['random_seed']
@@ -381,13 +388,14 @@ class Agent:
 
     def get_match_representations(self, input_observation, input_observation_char, input_quest, input_quest_char, use_model="online"):
         """
-        I believe this is the encoding function
+        This encodes words and chars and aggregates them into the current models state
         """
         model = self.online_net if use_model == "online" else self.target_net
         description_representation_sequence, description_mask = model.representation_generator(
             input_observation, input_observation_char)
         quest_representation_sequence, quest_mask = model.representation_generator(
             input_quest, input_quest_char)
+        
 
         match_representation_sequence = model.get_match_representations(description_representation_sequence,
                                                                         description_mask,
@@ -395,15 +403,17 @@ class Agent:
                                                                         quest_mask)
         match_representation_sequence = match_representation_sequence * \
             description_mask.unsqueeze(-1)
+        
         return match_representation_sequence
 
     def get_ranks(self, input_observation, input_observation_char, input_quest, input_quest_char, word_masks, use_model="online"):
         """
-        Given input observation and question tensors, to get Q values of words.
+        Given input observation and question tensors, to get Q values of words or if using actor critic, the probability dists and state value.
         """
         model = self.online_net if use_model == "online" else self.target_net
         match_representation_sequence = self.get_match_representations(
             input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
+        
         # list of 3 tensors size of vocab
         action_ranks = model.action_scorer(
             match_representation_sequence, word_masks)
@@ -607,7 +617,7 @@ class Agent:
 
             chosen_indices, action_log_probs, action_entropies = self.choose_probability_command(
                 probs)
-
+            
             chosen_strings = self.get_chosen_strings(chosen_indices)
 
             for i in range(batch_size):
@@ -689,10 +699,55 @@ class Agent:
         if data is None:
             return None
 
-        _, _, _, _, rewards, state_values, action_log_probs, action_entropies, is_finals = data
+        obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
+        
+        finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
+        
+        if self.icm:
+            with torch.no_grad():
+                encoded_actions = []
+                for i,command in enumerate(word_indices_list):
+                    action = self.get_chosen_strings([x.unsqueeze(0) for x in command])
+                    padding = len(action[0].split())
+                    if padding<3:
+                        for _ in range(3-padding):
+                            action[0]+=" <pad>"
+                    action_input, action_input_chars, _ = self.get_agent_inputs(action)
+                    encoded_action, _ = self.online_net.representation_generator(action_input,action_input_chars) 
+                    encoded_actions.append(encoded_action)
+                    
+                
 
-        # input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-        # input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
+                input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
+                input_observations, input_observation_chars, _ =  self.get_agent_inputs(obs_list)
+                
+                encoded_observations = self.get_match_representations(input_observations,input_observation_chars,input_quest,input_quest_char)
+                # for i in range(len(encoded_observations)):
+                #     if is_finals[i]:
+                #         if self.use_cuda:
+                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
+                #         else:
+                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i])
+                
+                enc_actions = torch.stack(encoded_actions).squeeze()[0:-1]
+                
+                # for i in range(len(enc_actions)):
+                #     if is_finals[i]:
+                #         if self.use_cuda:
+                #             enc_actions[i] = torch.zeros_like(enc_actions[i]).cuda()
+                #         else:
+                #             enc_actions[i] = torch.zeros_like(enc_actions[i])
+                             
+                
+                next_encoded_observations = encoded_observations[1:] 
+                
+                encoded_observations = encoded_observations[0:-1]
+            
+            forward_loss = self.curiosity_module.get_forward_loss(encoded_observations,enc_actions,next_encoded_observations)
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_observations,enc_actions,next_encoded_observations)
+            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
+                
+                
 
         policy_losses = []
         value_losses = []
@@ -707,13 +762,10 @@ class Agent:
             returns.insert(0, Gt)
 
         returns = torch.stack(returns)
-        
-        # returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         state_values = torch.stack(state_values)
 
-        advantage = returns - state_values * \
-            (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
+        advantage = returns - state_values *finals_mask
         concat_probs = []
         concat_entropies = []
 
@@ -735,12 +787,12 @@ class Agent:
                               [:, i] * advantage.detach()).mean()
 
         value_losses = 0.5 * advantage.pow(2).mean()
-        # reset gradients
-        self.optimizer.zero_grad()
-
+        
         # sum up all the values of policy_losses and value_losses
         loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
-
+        if self.icm:
+            loss = self.curiosity_module.lambda_weight*loss+icm_loss
+        
         return loss
 
     def get_dqn_loss(self):
@@ -764,6 +816,47 @@ class Agent:
             obs_list)
         next_input_observation, next_input_observation_char, _ = self.get_agent_inputs(
             next_obs_list)
+
+        if self.icm:
+            with torch.no_grad():
+                encoded_actions = []
+                for i,command in enumerate(chosen_indices):
+                    action = self.get_chosen_strings([x.unsqueeze(0) for x in command])
+                    padding = len(action[0].split())
+                    if padding<3:
+                        for _ in range(3-padding):
+                            action[0]+=" <pad>"
+                    action_input, action_input_chars, _ = self.get_agent_inputs(action)
+                    encoded_action, _ = self.online_net.representation_generator(action_input,action_input_chars) 
+                    encoded_actions.append(encoded_action)
+                    
+                encoded_observations = self.get_match_representations(input_observation,input_observation_char,input_quest,input_quest_char)
+                next_encoded_observations = self.get_match_representations(next_input_observation,next_input_observation_char,input_quest,input_quest_char)
+                # for i in range(len(encoded_observations)):
+                #     if actual_n_list[i]:
+                #         if self.use_cuda:
+                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
+                #             next_encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
+                #         else:
+                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i])
+                #             next_encoded_observations[i] = torch.zeros_like(encoded_observations[i])
+                
+                enc_actions = torch.stack(encoded_actions).squeeze()
+                
+                # for i in range(len(enc_actions)):
+                #     if actual_n_list[i]:
+                #         if self.use_cuda:
+                #             enc_actions[i] = torch.zeros_like(enc_actions[i]).cuda()
+                #         else:
+                #             enc_actions[i] = torch.zeros_like(enc_actions[i])
+                             
+                
+            forward_loss = self.curiosity_module.get_forward_loss(encoded_observations,enc_actions,next_encoded_observations)
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_observations,enc_actions,next_encoded_observations)
+            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
+                
+                
+
 
         possible_words, next_possible_words = [], []
         for i in range(3):
@@ -821,6 +914,10 @@ class Agent:
         if not self.use_distributional:
             rewards = rewards + next_q_value * discount  # batch
             loss = F.smooth_l1_loss(q_value, rewards)
+
+            if self.icm:
+                loss = self.curiosity_module.lambda_weight*loss+icm_loss
+
             return loss
 
         with torch.no_grad():
@@ -852,6 +949,9 @@ class Agent:
         # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
         loss = -torch.sum(m * log_q_value, 1)
         loss = torch.mean(loss)
+        if self.icm:
+            loss = self.curiosity_module.lambda_weight*loss+icm_loss
+        
         return loss
 
     def update_interaction(self):
@@ -872,7 +972,19 @@ class Agent:
         # Backpropagate
         self.online_net.zero_grad()
         self.optimizer.zero_grad()
+
+        if self.icm:
+            self.curiosity_module.optimizer.zero_grad()
+            self.curiosity_module.zero_grad()
+
         loss.backward()
+
+        if self.icm:
+            torch.nn.utils.clip_grad_norm_(
+            self.curiosity_module.model_params, self.clip_grad_norm)
+            self.curiosity_module.optimizer.step()
+        
+
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(
             self.online_net.parameters(), self.clip_grad_norm)

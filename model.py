@@ -178,6 +178,9 @@ class DQN(torch.nn.Module):
         return M0
 
     def representation_generator(self, _input_words, _input_chars):
+        """
+        Encode words and chars into single representation using the embedding and encoding layers.
+        """
         embeddings, mask = self.word_embedding(
             _input_words)  # batch x time x emb
         char_embeddings, _ = self.char_embedding(
@@ -193,10 +196,12 @@ class DQN(torch.nn.Module):
         return encoding_sequence, mask
 
     def action_scorer(self, state_representation_sequence, word_masks):
-
+        
         state_representation, _ = torch.max(state_representation_sequence, 1)
+        
         hidden = self.action_scorer_shared_linear(
             state_representation)  # batch x hid
+        
         hidden = torch.relu(hidden)  # batch x hid
         action_ranks = []
         if self.dqn_conditioning:
@@ -458,6 +463,7 @@ class ActorCritic(torch.nn.Module):
         state_representation, _ = torch.max(state_representation_sequence, 1)
         hidden = self.action_scorer_shared_linear(
             state_representation)  # batch x hid
+        
         hidden = torch.relu(hidden)  # batch x hid
 
         action_probs = []
@@ -563,7 +569,10 @@ class ICM_Forward(torch.nn.Module):
         )
 
     def forward(self, state_feature, action_embedding):
+        
+        action_embedding = action_embedding.view(len(action_embedding),3*len(action_embedding[0][0]))
         input = torch.cat([state_feature, action_embedding], dim=-1)
+        
         return self.forward_net(input)
 
 
@@ -571,6 +580,8 @@ class ICM_Feature(torch.nn.Module):
 
     def __init__(self, state_embedding_size, hidden_size, feature_size):
         super(ICM_Feature, self).__init__()
+      
+        self.encoder = torch.nn.LSTM(state_embedding_size,state_embedding_size)
         self.feature_net = torch.nn.Sequential(
             torch.nn.Linear(state_embedding_size, hidden_size),
             torch.nn.LeakyReLU(),
@@ -580,7 +591,9 @@ class ICM_Feature(torch.nn.Module):
         )
 
     def forward(self, input):
-        return self.feature_net(input)
+        out,_ = self.encoder(input)
+        final_hidden_state = out[:,-1,:]
+        return self.feature_net(final_hidden_state)
 
 
 class ICM():
@@ -670,7 +683,8 @@ class ICM():
         :return : Inverse models loss
         """
         predicted_action = self.get_predicted_action(state, next_state)
-        return F.mse_loss(action, predicted_action)
+        action = action.view(len(action),3*len(action[0][0]))
+        return F.mse_loss(action.detach(), predicted_action,reduction='none').mean(dim=-1)
 
     def get_forward_loss(self, state, action, next_state):
         """
@@ -681,8 +695,9 @@ class ICM():
         :return : MSE loss of the forward model.
         """
         next_state_feature = self.get_feature(next_state)
-        predicted_state_feature = self.get_predicted_state(state, action)
-        return 0.5*F.mse_loss(predicted_state_feature, next_state_feature)
+        predicted_state_feature = self.get_predicted_state(state, action.detach())
+        
+        return F.mse_loss(predicted_state_feature, next_state_feature,reduction='none').mean(dim=-1)
 
     def get_intrinsic_reward(self, state, action, next_state):
         """
@@ -696,3 +711,8 @@ class ICM():
             intrinsic_reward = self.scaling_factor * \
                 self.get_forward_loss(state, action, next_state).detach()
             return intrinsic_reward
+
+    def zero_grad(self):
+        self.forward.zero_grad()
+        self.inverse.zero_grad()
+        self.feature.zero_grad()

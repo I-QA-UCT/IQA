@@ -170,7 +170,8 @@ def train(data_path):
         print_cmds = []
         counting_rewards_np = []
         valid_command_rewards_np = []
-
+        if agent.icm:
+            intrinsic_rewards = []
         # This tells the agent to act randomly until episode number exceeds the start to learn threshold. 
         # noisy nets are used in rainbow algorithm which decide on the randomness of actions so this must 
         # be false if noisy nets are used.
@@ -221,11 +222,35 @@ def train(data_path):
 
             # pass commands into env
             obs, _, _, infos = env.step(commands)
+            
             # possible words do not depend on history, because one can only interact with what is currently accessible
             observation_strings, possible_words = agent.get_game_info_at_certain_step(obs, infos)
             # add action performed to get into state to observation strings
             observation_strings = [a + " <|> " + item for a, item in zip(commands, observation_strings)]
             
+            if agent.icm:
+                with torch.no_grad():
+                    encoded_current_state = agent.get_match_representations(input_observation,input_observation_char,input_quest,input_quest_char)
+                    temp_commands = copy.copy(commands) 
+                    for i in range(len(temp_commands)):
+                        temp = len(temp_commands[i].split())
+                        if temp<3:
+                            for _ in range(3-temp):
+                                temp_commands[i]+=" <pad>"
+                    
+                    action_input, action_input_chars, _ = agent.get_agent_inputs(temp_commands)
+                    
+                    encoded_action, _ = agent.online_net.representation_generator(action_input,action_input_chars) 
+                    
+                    input_next_observation, input_next_observation_char, _ =  agent.get_agent_inputs(observation_strings)
+                    encoded_next_state = agent.get_match_representations(input_next_observation,input_next_observation_char,input_quest,input_quest_char)
+                    
+                    intrinsic_reward = agent.curiosity_module.scaling_factor*agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
+                    if agent.use_cuda:
+                        intrinsic_reward = intrinsic_reward.cuda()
+                    
+                    intrinsic_rewards.append(intrinsic_reward)
+
             # counting rewards - whenever a new state is visited a reward of one is given
             state_strings = agent.get_state_strings(infos)
             c_rewards = agent.get_binarized_count(state_strings, update=True)
@@ -320,21 +345,27 @@ def train(data_path):
                 continue
             agent.qa_replay_memory.push(False, qa_reward_np[b], answerer_input[b], questions[b], answers[b])
 
+       
         # assign sufficient info reward and counting reward to the corresponding steps
         counting_rewards_np = np.stack(counting_rewards_np, 1)  # batch x game step
         valid_command_rewards_np = np.stack(valid_command_rewards_np, 1)  # batch x game step
         command_rewards_np = sufficient_info_reward_np + counting_rewards_np * game_running_mask.T * agent.revisit_counting_lambda + valid_command_rewards_np * game_running_mask.T * agent.valid_command_bonus_lambda  # batch x game step
         command_rewards = generic.to_pt(command_rewards_np, enable_cuda=agent.use_cuda, type="float")  # batch x game step
+        
+        if agent.icm:
+            intrinsic_rewards = torch.stack(intrinsic_rewards,dim=1)*generic.to_pt(game_running_mask.T) # batch x gamestep
+            command_rewards = command_rewards+intrinsic_rewards
+
         for i in range(command_rewards_np.shape[1]):
             transition_cache[i].append(command_rewards[:, i])
         print(command_rewards_np[0])
-
+        print(generic.to_np(intrinsic_rewards)[0])
+        
         # push command generation experience into replay buffer
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
                 if agent.a2c:
-                    
                     batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                 else:
                     batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
