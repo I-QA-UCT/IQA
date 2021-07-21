@@ -359,7 +359,8 @@ def train(data_path):
         for i in range(command_rewards_np.shape[1]):
             transition_cache[i].append(command_rewards[:, i])
         print(command_rewards_np[0])
-        print(generic.to_np(intrinsic_rewards)[0])
+        if agent.icm:
+            print(generic.to_np(intrinsic_rewards)[0])
         
         # push command generation experience into replay buffer
         for b in range(batch_size):

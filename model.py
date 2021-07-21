@@ -716,3 +716,8 @@ class ICM():
         self.forward.zero_grad()
         self.inverse.zero_grad()
         self.feature.zero_grad()
+
+    def cuda(self):
+        self.forward.cuda()
+        self.inverse.cuda()
+        self.feature.cuda()

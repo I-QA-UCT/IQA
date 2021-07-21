@@ -59,7 +59,9 @@ class Agent:
 
         if self.icm:
             self.curiosity_module = ICM(self.config,self.config['model']['block_hidden_dim'],3*self.config['model']['block_hidden_dim'])
-
+            if self.use_cuda:
+                self.curiosity_module.cuda()
+                
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
         self.optimizer = torch.optim.Adam(self.online_net.parameters(
