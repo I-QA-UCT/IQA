@@ -1,7 +1,7 @@
 import logging
 import os
 import numpy as np
-
+import torch.optim
 import torch
 import torch.nn.functional as F
 
@@ -75,6 +75,8 @@ class DQN(torch.nn.Module):
         self.dueling_networks = self.config['dueling_networks']
         self.noisy_net = self.config['epsilon_greedy']['noisy_net']
 
+        self.dqn_conditioning = self.config['dqn_conditioning']
+
     def _def_layers(self):
         """
         Create the layers of the DQN
@@ -130,8 +132,11 @@ class DQN(torch.nn.Module):
                 action_scorer_output_size = self.word_vocab_size
 
         action_scorers = []
-        for _ in range(self.generate_length):
-            action_scorers.append(linear_function(self.action_scorer_hidden_dim, action_scorer_output_size))
+        for i in range(self.generate_length):
+            if not self.dqn_conditioning:
+                action_scorers.append(linear_function(self.action_scorer_hidden_dim, action_scorer_output_size))
+            else:
+                action_scorers.append(linear_function(self.action_scorer_hidden_dim+i*action_scorer_output_size, action_scorer_output_size))
         self.action_scorers = torch.nn.ModuleList(action_scorers)
 
         if self.dueling_networks:
@@ -172,29 +177,39 @@ class DQN(torch.nn.Module):
         state_representation, _ = torch.max(state_representation_sequence, 1)
         hidden = self.action_scorer_shared_linear(state_representation)  # batch x hid
         hidden = torch.relu(hidden)  # batch x hid
-    
         action_ranks = []
-        for i in range(self.generate_length):
-            a_rank = self.action_scorers[i](hidden)  # batch x n_vocab, or batch x n_vocab*atoms
-            if self.use_distributional:
-                if self.dueling_networks:
-                    a_rank_advantage = self.action_scorers_advantage[i](hidden)  # advantage stream
-                    a_rank = a_rank.view(-1, 1, self.atoms)
-                    a_rank_advantage = a_rank_advantage.view(-1, self.word_vocab_size, self.atoms)
-                    a_rank_advantage = a_rank_advantage * word_masks[i].unsqueeze(-1)
-                    q = a_rank + a_rank_advantage - a_rank_advantage.mean(1, keepdim=True)  # combine streams
+        if self.dqn_conditioning:
+            a_rank = self.action_scorers[0](hidden)  # batch x n_vocab
+            action_ranks.append(a_rank)
+            prev = a_rank
+            
+            for i in range(1,self.generate_length):
+                a_rank = self.action_scorers[i](torch.cat((hidden,prev),dim=1))  # batch x n_vocab
+                action_ranks.append(a_rank)
+                prev = torch.cat((prev,a_rank),dim=1)
+
+        else:
+            for i in range(self.generate_length):
+                a_rank = self.action_scorers[i](hidden)  # batch x n_vocab, or batch x n_vocab*atoms
+                if self.use_distributional:
+                    if self.dueling_networks:
+                        a_rank_advantage = self.action_scorers_advantage[i](hidden)  # advantage stream
+                        a_rank = a_rank.view(-1, 1, self.atoms)
+                        a_rank_advantage = a_rank_advantage.view(-1, self.word_vocab_size, self.atoms)
+                        a_rank_advantage = a_rank_advantage * word_masks[i].unsqueeze(-1)
+                        q = a_rank + a_rank_advantage - a_rank_advantage.mean(1, keepdim=True)  # combine streams
+                    else:
+                        q = a_rank.view(-1, self.word_vocab_size, self.atoms)  # batch x n_vocab x atoms
+                    q = masked_softmax(q, word_masks[i].unsqueeze(-1), axis=-1)  # batch x n_vocab x atoms
                 else:
-                    q = a_rank.view(-1, self.word_vocab_size, self.atoms)  # batch x n_vocab x atoms
-                q = masked_softmax(q, word_masks[i].unsqueeze(-1), axis=-1)  # batch x n_vocab x atoms
-            else:
-                if self.dueling_networks:
-                    a_rank_advantage = self.action_scorers_advantage[i](hidden)  # advantage stream, batch x vocab
-                    a_rank_advantage = a_rank_advantage * word_masks[i]
-                    q = a_rank + a_rank_advantage - a_rank_advantage.mean(1, keepdim=True)  # combine streams  # batch x vocab
-                else:
-                    q = a_rank   #batch x vocab
-                q = q * word_masks[i]
-            action_ranks.append(q)
+                    if self.dueling_networks:
+                        a_rank_advantage = self.action_scorers_advantage[i](hidden)  # advantage stream, batch x vocab
+                        a_rank_advantage = a_rank_advantage * word_masks[i]
+                        q = a_rank + a_rank_advantage - a_rank_advantage.mean(1, keepdim=True)  # combine streams  # batch x vocab
+                    else:
+                        q = a_rank   #batch x vocab
+                    q = q * word_masks[i]
+                action_ranks.append(q)
         return action_ranks
 
     def answer_question(self, matching_representation_sequence, doc_mask):

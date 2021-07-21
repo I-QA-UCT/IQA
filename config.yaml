@@ -29,7 +29,7 @@ checkpoint:
   save_checkpoint: True
   save_frequency: 1000  # episode
   experiment_tag: 'a2c_sixth_attempt_unlim'
-  load_pretrained: False  # during test, enable this so that the agent load your pretrained model
+  load_pretrained: True  # during test, enable this so that the agent load your pretrained model
   load_from_tag: 'a2c_sixth_attempt_unlim'  # if you want to load from prev experiment
 
 replay:
@@ -46,14 +46,29 @@ distributional:
   v_min: -10
   v_max: 10
 
+# Use previous command word q values in generating q value of next command word
+dqn_conditioning: False
 
+#use dueling networks
 dueling_networks: False
 
+# use DDQN
 double_dqn: False
 
+# Use actor critic
 a2c:
   enable: True
   entropy_coefficient: 0.1
+
+icm:
+  enable: False
+  scaling_factor: 2
+  learning_rate: 0.001
+  beta: 0.5
+  lambda: 0.8
+  hidden_size: 128
+  state_feature_size: 128
+
 
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled
