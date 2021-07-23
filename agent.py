@@ -773,9 +773,11 @@ class Agent:
         value_losses = 0.5 * advantage.pow(2).mean()
         
         # sum up all the values of policy_losses and value_losses
-        loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
+        actor_critic_loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
         if self.icm:
-            loss = self.curiosity_module.lambda_weight*loss+icm_loss
+            loss = self.curiosity_module.lambda_weight*actor_critic_loss+icm_loss
+        else:
+            loss = actor_critic_loss
         
         return loss
 
@@ -869,11 +871,12 @@ class Agent:
                              ** actual_n_list, self.use_cuda, type="float")
         if not self.use_distributional:
             rewards = rewards + next_q_value * discount  # batch
-            loss = F.smooth_l1_loss(q_value, rewards)
+            dqn_loss = F.smooth_l1_loss(q_value, rewards)
 
             if self.icm:
-                loss = self.curiosity_module.lambda_weight*loss+icm_loss
-
+                loss = self.curiosity_module.lambda_weight*dqn_loss+icm_loss
+            else:
+                loss = dqn_loss
             return loss
 
         with torch.no_grad():
@@ -903,11 +906,12 @@ class Agent:
                                                              (b - l.float())).view(-1))  # m_u = m_u + p(s_t+n, a*)(b - l)
 
         # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
-        loss = -torch.sum(m * log_q_value, 1)
-        loss = torch.mean(loss)
+        dqn_loss = -torch.sum(m * log_q_value, 1)
+        dqn_loss = torch.mean(dqn_loss)
         if self.icm:
-            loss = self.curiosity_module.lambda_weight*loss+icm_loss
-        
+            loss = self.curiosity_module.lambda_weight*dqn_loss+icm_loss
+        else:
+            loss = dqn_loss
         return loss
 
     def update_interaction(self):
