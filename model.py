@@ -581,7 +581,7 @@ class ICM_Feature(torch.nn.Module):
     def __init__(self, state_embedding_size, hidden_size, feature_size):
         super(ICM_Feature, self).__init__()
       
-        self.encoder = torch.nn.LSTM(state_embedding_size,state_embedding_size)
+        self.encoder = torch.nn.LSTM(state_embedding_size,state_embedding_size,batch_first=True)
         self.feature_net = torch.nn.Sequential(
             torch.nn.Linear(state_embedding_size, hidden_size),
             torch.nn.LeakyReLU(),

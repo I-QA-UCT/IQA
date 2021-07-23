@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.distributions import Categorical
+from torch.nn.utils.rnn import pad_sequence
 import command_generation_memory
 import qa_memory
 from model import ActorCritic, DQN, ICM
@@ -722,16 +723,15 @@ class Agent:
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
         if self.icm:
-            forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
-            inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
+            encoded_states = pad_sequence(enc_state_list).permute(1,0,2)
+            encoded_next_states = pad_sequence(enc_next_list).permute(1,0,2)
+            encoded_actions = torch.stack(enc_action_list)
+            
+            forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
             icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
                   
-            for i in range(1,len(enc_state_list)):
-                if not is_finals[i]:
-                    forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
-                    inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
-                    icm_loss += (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
-                    
+            
                 
         policy_losses = []
         value_losses = []
@@ -801,20 +801,19 @@ class Agent:
         next_input_observation, next_input_observation_char, _ = self.get_agent_inputs(
             next_obs_list)
 
+        finals_mask = (1-to_pt(np.array(actual_n_list, dtype=bool), self.use_cuda))
+        
+
         if self.icm:
-            forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
-            inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
+            encoded_states = pad_sequence(enc_state_list).permute(1,0,2)
+            encoded_next_states = pad_sequence(enc_next_list).permute(1,0,2)
+            encoded_actions = torch.stack(enc_action_list)
+            
+            forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
             icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
                   
-            for i in range(1,len(enc_state_list)):
-                if not actual_n_list[i]:
-                    forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
-                    inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
-                    icm_loss += (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
-                    
-                
-
-
+            
         possible_words, next_possible_words = [], []
         for i in range(3):
             possible_words.append([item[i] for item in possible_words_list])
