@@ -613,8 +613,7 @@ class ICM():
             self.feature_size+action_size, self.hidden_size, self.feature_size)
         self.model_params = list(self.feature.parameters(
         ))+list(self.inverse.parameters())+list(self.forward.parameters())
-        self.optimizer = torch.optim.Adam(
-            self.model_params, lr=self.learning_rate)
+        
 
     def read_config(self):
         """
@@ -623,7 +622,6 @@ class ICM():
         self.scaling_factor = self.config['icm']['scaling_factor']
         self.beta = self.config['icm']['beta']
         self.lambda_weight = self.config['icm']['lambda']
-        self.learning_rate = self.config['icm']['learning_rate']
         self.hidden_size = self.config['icm']['hidden_size']
         self.feature_size = self.config['icm']['state_feature_size']
 

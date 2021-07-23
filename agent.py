@@ -65,7 +65,11 @@ class Agent:
                 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
-        self.optimizer = torch.optim.Adam(self.online_net.parameters(
+        if self.icm:
+            self.optimizer = torch.optim.Adam(list(self.online_net.parameters(
+        ))+self.curiosity_module.model_params, lr=self.config['training']['optimizer']['learning_rate'])
+        else:
+            self.optimizer = torch.optim.Adam(self.online_net.parameters(
         ), lr=self.config['training']['optimizer']['learning_rate'])
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
@@ -929,21 +933,19 @@ class Agent:
         if interaction_loss is None:
             return None
         loss = interaction_loss * self.interaction_loss_lambda
+        
         # Backpropagate
+        if self.icm:
+            self.curiosity_module.zero_grad()
         self.online_net.zero_grad()
         self.optimizer.zero_grad()
-
-        if self.icm:
-            self.curiosity_module.optimizer.zero_grad()
-            self.curiosity_module.zero_grad()
-
+        
         loss.backward()
 
         if self.icm:
             torch.nn.utils.clip_grad_norm_(
             self.curiosity_module.model_params, self.clip_grad_norm)
-            self.curiosity_module.optimizer.step()
-        
+    
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(
