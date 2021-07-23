@@ -12,7 +12,7 @@ general:
 training:
   batch_size: 1   # Number of games played in parallel
   max_episode: 100000  # Number of episodes to train
-  learn_start_from_this_episode: 1 # Episodes of games played randomly 
+  learn_start_from_this_episode: 0 # Episodes of games played randomly 
   target_net_update_frequency: 1000  # sync target net with online net per this many epochs
   max_nb_steps_per_episode: 50  # after this many steps, a game is terminated
   qa_loss_lambda: 1.0
@@ -65,7 +65,7 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
+  enable: False
   scaling_factor: 2.5
   learning_rate: 0.00025
   beta: 0.2

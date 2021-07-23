@@ -188,6 +188,14 @@ def train(data_path):
         
         _ = agent.get_binarized_count(state_strings, update=True)
 
+        # Perform actor-critic update
+        if agent.a2c and episode_no>agent.learn_start_from_this_episode:
+            interaction_loss = agent.update_interaction()
+            # Log loss
+            if interaction_loss is not None:
+                running_avg_correct_state_loss.push(interaction_loss)
+        
+
         ### The actual game step loop where the agent performs actions
         for step_no in range(agent.max_nb_steps_per_episode):
             # update answerer input
@@ -299,13 +307,7 @@ def train(data_path):
                 break
         
         ### End of action peforming loop - Now performs Question Answering
-        if agent.a2c and episode_no>agent.learn_start_from_this_episode:
-            interaction_loss = agent.update_interaction()
-            # Log loss
-            if interaction_loss is not None:
-                running_avg_correct_state_loss.push(interaction_loss)
         
-
         print(" / ".join(print_cmds))
         # The agent has exhausted all steps, now answer question.
         # Get most recent observation
