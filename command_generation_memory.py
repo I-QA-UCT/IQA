@@ -4,8 +4,8 @@ import torch
 
 
 # a snapshot of state to be stored in replay memory
-Transition = namedtuple('Transition', ('observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
-PolicyTransition = namedtuple('Transition', ('observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
+Transition = namedtuple('Transition', ('encoded_state','encoded_action','encoded_next_state','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
+PolicyTransition = namedtuple('Transition', ('encoded_state','encoded_action','encoded_next_state','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
 
 class SingleEpisodeStorage():
 
@@ -21,11 +21,15 @@ class SingleEpisodeStorage():
 
     def get_batch(self):
         
-        obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[]
+        encoded_state_list,encoded_action_list,encoded_next_state_list,obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[],[],[],[]
     
         for item in self.batch_episode_memory:
-            obs, quest, possible_words, word_indices, reward, state_value, action_log_probs,action_entropies, is_final = item
-            
+            enc_state,enc_act,enc_next,obs, quest, possible_words, word_indices, reward, state_value, action_log_probs,action_entropies, is_final = item
+
+            encoded_state_list.append(enc_state)
+            encoded_action_list.append(enc_act)
+            encoded_next_state_list.append(enc_next)
+
             obs_list.append(obs)
             quest_list.append(quest)
             possible_words_list.append(possible_words)
@@ -37,7 +41,7 @@ class SingleEpisodeStorage():
             is_finals.append(is_final)
            
         
-        return obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
+        return encoded_state_list,encoded_action_list,encoded_next_state_list,obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
 
            
 
@@ -102,6 +106,10 @@ class PrioritizedReplayMemory(object):
                 continue
 
             # all good
+            state_encoded = which_memory[head].encoded_state
+            action_encoded = which_memory[head].encoded_action
+            next_state_encoded = which_memory[head].encoded_next_state
+
             obs = which_memory[head].observation_list
             quest = which_memory[head].quest_list
             possible_words = which_memory[head].possible_words
@@ -113,7 +121,7 @@ class PrioritizedReplayMemory(object):
             rewards_up_to_next_final = [self.discount_gamma ** i * which_memory[head + i].reward for i in range(next_final - head + 1)]
             reward = torch.sum(torch.stack(rewards_up_to_next_final))
 
-            return (obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
+            return (state_encoded,action_encoded,next_state_encoded,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
 
     def _get_batch(self, n_list, which_memory):
         res = []
@@ -146,11 +154,15 @@ class PrioritizedReplayMemory(object):
         if res_beta is not None:
             res += res_beta
 
-        obs_list, quest_list, possible_words_list, word_indices_list = [], [], [], []
+        encoded_state_list,encoded_action_list,encoded_next_state_list,obs_list, quest_list, possible_words_list, word_indices_list = [], [], [], [],[],[],[]
         reward_list, next_obs_list, next_possible_words_list, actual_n_list = [], [], [], []
 
         for item in res:
-            obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
+            enc_state,enc_act,enc_next,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
+
+            encoded_state_list.append(enc_state)
+            encoded_action_list.append(enc_act)
+            encoded_next_state_list.append(enc_next)
 
             obs_list.append(obs)
             quest_list.append(quest)
@@ -166,7 +178,7 @@ class PrioritizedReplayMemory(object):
         rewards = torch.stack(reward_list, 0)  # batch
         actual_n_list = np.array(actual_n_list)
 
-        return obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
+        return encoded_state_list,encoded_action_list,encoded_next_state_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
 
     def __len__(self):
         return len(self.alpha_memory) + len(self.beta_memory)

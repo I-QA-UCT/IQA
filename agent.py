@@ -274,21 +274,37 @@ class Agent:
             (batch_size,), dtype="float32")
         self.naozi.reset(batch_size=batch_size)
 
+
+    def pad_commands(self,commands):
+        padded_commands = []
+        for command in commands:
+            padded_command = command
+            length = len(command.split())
+            if length<3:
+                padded_command += " <pad>"*(3-length)
+            padded_commands.append(padded_command)
+        return padded_commands
+
+
     def get_agent_inputs(self, string_list):
         """
         process agent input strings into their word ids and char ids and convert to pytorch tensor.
         :param string_list: list of string observations for each game in batch.
         :return input_sentence: pytorch tensor of word id sentences padded for entire batch
         :return input_sentence_char: pytorch tensor of char id sentences padded for entire batch
-        :return sentence_id_list: 2d list of word ids for each sentence. Each row is a different game in the batch.
+        :return sentence_id_list: 2d list of word ids for each sentence. Each row is a different game in the batch?.
         """
         sentence_token_list = [item.split() for item in string_list]
         sentence_id_list = [_words_to_ids(
             tokens, self.word2id) for tokens in sentence_token_list]
         input_sentence_char = list_of_token_list_to_char_input(
             sentence_token_list, self.char2id)
+        
+        
+        padding_length = max_len(sentence_id_list)
+        
         input_sentence = pad_sequences(
-            sentence_id_list, maxlen=max_len(sentence_id_list)).astype('int32')
+            sentence_id_list, maxlen=padding_length).astype('int32')
         input_sentence = to_pt(input_sentence, self.use_cuda)
         input_sentence_char = to_pt(input_sentence_char, self.use_cuda)
         return input_sentence, input_sentence_char, sentence_id_list
@@ -701,56 +717,22 @@ class Agent:
         if data is None:
             return None
 
-        obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
+        enc_state_list,enc_action_list,enc_next_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
         
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
         if self.icm:
-            with torch.no_grad():
-                encoded_actions = []
-                for i,command in enumerate(word_indices_list):
-                    action = self.get_chosen_strings([x.unsqueeze(0) for x in command])
-                    padding = len(action[0].split())
-                    if padding<3:
-                        for _ in range(3-padding):
-                            action[0]+=" <pad>"
-                    action_input, action_input_chars, _ = self.get_agent_inputs(action)
-                    encoded_action, _ = self.online_net.representation_generator(action_input,action_input_chars) 
-                    encoded_actions.append(encoded_action)
+            forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
+            inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
+            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
+                  
+            for i in range(1,len(enc_state_list)):
+                if not is_finals[i]:
+                    forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
+                    inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
+                    icm_loss += (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
                     
                 
-
-                input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-                input_observations, input_observation_chars, _ =  self.get_agent_inputs(obs_list)
-                
-                encoded_observations = self.get_match_representations(input_observations,input_observation_chars,input_quest,input_quest_char)
-                # for i in range(len(encoded_observations)):
-                #     if is_finals[i]:
-                #         if self.use_cuda:
-                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
-                #         else:
-                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i])
-                
-                enc_actions = torch.stack(encoded_actions).squeeze()[0:-1]
-                
-                # for i in range(len(enc_actions)):
-                #     if is_finals[i]:
-                #         if self.use_cuda:
-                #             enc_actions[i] = torch.zeros_like(enc_actions[i]).cuda()
-                #         else:
-                #             enc_actions[i] = torch.zeros_like(enc_actions[i])
-                             
-                
-                next_encoded_observations = encoded_observations[1:] 
-                
-                encoded_observations = encoded_observations[0:-1]
-            
-            forward_loss = self.curiosity_module.get_forward_loss(encoded_observations,enc_actions,next_encoded_observations)
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_observations,enc_actions,next_encoded_observations)
-            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
-                
-                
-
         policy_losses = []
         value_losses = []
         returns = []
@@ -775,8 +757,8 @@ class Agent:
             concat_entropies.append(torch.stack(action_entropies[i]))
             concat_probs.append(torch.stack(logs))
 
+        # calculate entropy loss
         entropy_loss = torch.stack(concat_entropies).mean()
-
         # calculate actor (policy) loss
         policy_losses = torch.tensor(0.0)
 
@@ -810,7 +792,7 @@ class Agent:
         if data is None:
             return None
 
-        obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        enc_state_list,enc_action_list,enc_next_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         batch_size = len(actual_n_list)
 
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
@@ -820,43 +802,16 @@ class Agent:
             next_obs_list)
 
         if self.icm:
-            with torch.no_grad():
-                encoded_actions = []
-                for i,command in enumerate(chosen_indices):
-                    action = self.get_chosen_strings([x.unsqueeze(0) for x in command])
-                    padding = len(action[0].split())
-                    if padding<3:
-                        for _ in range(3-padding):
-                            action[0]+=" <pad>"
-                    action_input, action_input_chars, _ = self.get_agent_inputs(action)
-                    encoded_action, _ = self.online_net.representation_generator(action_input,action_input_chars) 
-                    encoded_actions.append(encoded_action)
-                    
-                encoded_observations = self.get_match_representations(input_observation,input_observation_char,input_quest,input_quest_char)
-                next_encoded_observations = self.get_match_representations(next_input_observation,next_input_observation_char,input_quest,input_quest_char)
-                # for i in range(len(encoded_observations)):
-                #     if actual_n_list[i]:
-                #         if self.use_cuda:
-                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
-                #             next_encoded_observations[i] = torch.zeros_like(encoded_observations[i]).cuda() 
-                #         else:
-                #             encoded_observations[i] = torch.zeros_like(encoded_observations[i])
-                #             next_encoded_observations[i] = torch.zeros_like(encoded_observations[i])
-                
-                enc_actions = torch.stack(encoded_actions).squeeze()
-                
-                # for i in range(len(enc_actions)):
-                #     if actual_n_list[i]:
-                #         if self.use_cuda:
-                #             enc_actions[i] = torch.zeros_like(enc_actions[i]).cuda()
-                #         else:
-                #             enc_actions[i] = torch.zeros_like(enc_actions[i])
-                             
-                
-            forward_loss = self.curiosity_module.get_forward_loss(encoded_observations,enc_actions,next_encoded_observations)
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_observations,enc_actions,next_encoded_observations)
+            forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
+            inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[0].unsqueeze(0),enc_action_list[0].unsqueeze(0),enc_next_list[0].unsqueeze(0))
             icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
-                
+                  
+            for i in range(1,len(enc_state_list)):
+                if not actual_n_list[i]:
+                    forward_loss = self.curiosity_module.get_forward_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
+                    inverse_loss = self.curiosity_module.get_inverse_loss(enc_state_list[i].unsqueeze(0),enc_action_list[i].unsqueeze(0),enc_next_list[i].unsqueeze(0))
+                    icm_loss += (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
+                    
                 
 
 

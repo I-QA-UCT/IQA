@@ -149,12 +149,14 @@ def train(data_path):
 
         commands, last_facts, init_facts = [], [], []
         commands_per_step, game_facts_cache = [], []
+        
         for i in range(batch_size):
             commands.append("restart")
             last_facts.append(None)
             init_facts.append(None)
             game_facts_cache.append([])
             commands_per_step.append(["restart"])
+            
 
         # process the observation string and get the possible words
         observation_strings, possible_words = agent.get_game_info_at_certain_step(obs, infos)
@@ -172,6 +174,7 @@ def train(data_path):
         valid_command_rewards_np = []
         if agent.icm:
             intrinsic_rewards = []
+            
         # This tells the agent to act randomly until episode number exceeds the start to learn threshold. 
         # noisy nets are used in rainbow algorithm which decide on the randomness of actions so this must 
         # be false if noisy nets are used.
@@ -179,6 +182,10 @@ def train(data_path):
         
         # push init state into counting reward dict - this is used for exploration bonus...?
         state_strings = agent.get_state_strings(infos)
+        
+        if agent.icm:
+            prev_state_input, prev_state_char, _ =agent.get_agent_inputs([generic.preproc(item, tokenizer=agent.nlp)for item in state_strings])
+        
         _ = agent.get_binarized_count(state_strings, update=True)
 
         ### The actual game step loop where the agent performs actions
@@ -228,34 +235,42 @@ def train(data_path):
             # add action performed to get into state to observation strings
             observation_strings = [a + " <|> " + item for a, item in zip(commands, observation_strings)]
             
-            if agent.icm:
-                with torch.no_grad():
-                    encoded_current_state = agent.get_match_representations(input_observation,input_observation_char,input_quest,input_quest_char)
-                    temp_commands = copy.copy(commands) 
-                    for i in range(len(temp_commands)):
-                        temp = len(temp_commands[i].split())
-                        if temp<3:
-                            for _ in range(3-temp):
-                                temp_commands[i]+=" <pad>"
-                    
-                    action_input, action_input_chars, _ = agent.get_agent_inputs(temp_commands)
-                    
-                    encoded_action, _ = agent.online_net.representation_generator(action_input,action_input_chars) 
-                    
-                    input_next_observation, input_next_observation_char, _ =  agent.get_agent_inputs(observation_strings)
-                    encoded_next_state = agent.get_match_representations(input_next_observation,input_next_observation_char,input_quest,input_quest_char)
-                    
-                    intrinsic_reward = agent.curiosity_module.scaling_factor*agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
-                    if agent.use_cuda:
-                        intrinsic_reward = intrinsic_reward.cuda()
-                    
-                    intrinsic_rewards.append(intrinsic_reward)
 
             # counting rewards - whenever a new state is visited a reward of one is given
             state_strings = agent.get_state_strings(infos)
             c_rewards = agent.get_binarized_count(state_strings, update=True)
             counting_rewards_np.append(np.array(c_rewards))
 
+            if agent.icm:
+                with torch.no_grad():
+                    # Encode the state before the action
+                    encoded_current_state = agent.get_match_representations(prev_state_input,prev_state_char,input_quest,input_quest_char)
+                
+                    # Process the actions
+                    action_input, action_input_chars, _ = agent.get_agent_inputs(agent.pad_commands(commands))
+                    
+                    # Encode the actions
+                    encoded_action, _ = agent.online_net.representation_generator(action_input,action_input_chars) 
+                    # process the state after the action
+                    state_input, state_char, _ =agent.get_agent_inputs([generic.preproc(item, tokenizer=agent.nlp)for item in state_strings])
+                    # Encode the state after the action
+                    encoded_next_state = agent.get_match_representations(state_input,state_char,input_quest,input_quest_char)
+                    
+                    replay_info = [encoded_current_state,encoded_action,encoded_next_state]+replay_info
+
+                    # set previous values to current
+                    prev_state_input = state_input
+                    prev_state_char = state_char
+
+                    # get intrinsic reward
+                    intrinsic_reward = agent.curiosity_module.scaling_factor*agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
+                    
+                    if agent.use_cuda:
+                        intrinsic_reward = intrinsic_reward.cuda()
+                    
+                    intrinsic_rewards.append(intrinsic_reward)
+
+          
             # Rainbow algorithm - resetting noisy nets
             if agent.noisy_net and step_in_total % agent.update_per_k_game_steps == 0:
                 agent.reset_noise()  # Draw a new set of noisy weights
@@ -290,6 +305,7 @@ def train(data_path):
             if interaction_loss is not None:
                 running_avg_correct_state_loss.push(interaction_loss)
         
+
         print(" / ".join(print_cmds))
         # The agent has exhausted all steps, now answer question.
         # Get most recent observation
@@ -367,16 +383,29 @@ def train(data_path):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
                 if agent.a2c:
-                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
+                    if agent.icm:
+                        encoded_current_state,encoded_action,encoded_next_state,batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
+                    else:
+                        batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                 else:
-                    batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                    if agent.icm:
+                       encoded_current_state,encoded_action,encoded_next_state, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                    else:
+                        batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
                 if agent.a2c:
-                    agent.command_generation_replay_memory.push(batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+                    if not agent.icm:
+                        agent.command_generation_replay_memory.push(None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+                    else:
+                        agent.command_generation_replay_memory.push(encoded_next_state[b],encoded_action[b],encoded_next_state[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+              
                 else:
-                    agent.command_generation_replay_memory.push(is_prior, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                    if not agent.icm:
+                        agent.command_generation_replay_memory.push(is_prior,None,None,None, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                    else:
+                        agent.command_generation_replay_memory.push(is_prior,encoded_next_state[b],encoded_action[b],encoded_next_state[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
 
