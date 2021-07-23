@@ -946,7 +946,6 @@ class Agent:
             torch.nn.utils.clip_grad_norm_(
             self.curiosity_module.model_params, self.clip_grad_norm)
     
-
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(
             self.online_net.parameters(), self.clip_grad_norm)

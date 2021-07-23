@@ -31,9 +31,9 @@ evaluate:
 checkpoint:
   save_checkpoint: True # Save model checkpoints
   save_frequency: 1000  # episode
-  experiment_tag: 'a2c_existence_1_fixed_icm'
+  experiment_tag: 'a2c_location_1_fixed_icm'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: 'a2c_existence_1_fixed_icm'  # if you want to load from prev experiment
+  load_from_tag: 'a2c_location_1_fixed_icm'  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
@@ -61,13 +61,12 @@ double_dqn: False
 # Actor Critic Settings
 a2c:
   enable: True
-  entropy_coefficient: 0.01
+  entropy_coefficient: 0.05
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: False
-  scaling_factor: 2.5
-  learning_rate: 0.00025
+  enable: True
+  scaling_factor: 2
   beta: 0.2
   lambda: 0.1
   hidden_size: 64
