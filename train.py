@@ -194,6 +194,11 @@ def train(data_path):
             # Log loss
             if interaction_loss is not None:
                 running_avg_correct_state_loss.push(interaction_loss)
+            # update question answerer
+            qa_loss = agent.update_qa()
+            # Log loss
+            if qa_loss is not None:
+                running_avg_qa_loss.push(qa_loss)
         
 
         ### The actual game step loop where the agent performs actions
@@ -291,11 +296,11 @@ def train(data_path):
                     # Log loss
                     if interaction_loss is not None:
                         running_avg_correct_state_loss.push(interaction_loss)
-                # update question answerer
-                qa_loss = agent.update_qa()
-                # Log loss
-                if qa_loss is not None:
-                    running_avg_qa_loss.push(qa_loss)
+                    # update question answerer
+                    qa_loss = agent.update_qa()
+                    # Log loss
+                    if qa_loss is not None:
+                        running_avg_qa_loss.push(qa_loss)
 
             print_cmds.append(commands[0] if agent.prev_step_is_still_interacting[0] else "--")
             # force stopping

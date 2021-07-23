@@ -31,9 +31,9 @@ evaluate:
 checkpoint:
   save_checkpoint: True # Save model checkpoints
   save_frequency: 1000  # episode
-  experiment_tag: 'a2c_location_1_fixed_icm'
+  experiment_tag: 'a2c_location_1_fixed'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: 'a2c_location_1_fixed_icm'  # if you want to load from prev experiment
+  load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
@@ -65,7 +65,7 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
+  enable: False
   scaling_factor: 2
   beta: 0.2
   lambda: 0.1
