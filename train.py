@@ -20,6 +20,7 @@ import reward_helper
 import game_generator
 import evaluate
 from query import process_facts
+from entity_relation_collection import get_entity_relation
 
 # Information outputted from environment besides observation
 request_infos = textworld.EnvInfos(description=True,
@@ -98,6 +99,7 @@ def train(data_path):
         all_training_games.sort()
         all_env_ids = None
     
+    get_entity_relation(path=games_dir, question_type=agent.question_type)
     ### GAME LOOP
     while(True):
         # Break when episode limit is reached
