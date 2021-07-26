@@ -114,3 +114,10 @@ def get_entity_relation(game_info):
 
     input_file = open('./cleaned_temp.txt', 'r')
 
+    entities = set()
+    relations = set()
+
+    sents = input_file.read()
+
+    print(sents)
+
