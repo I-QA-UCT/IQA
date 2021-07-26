@@ -99,7 +99,7 @@ def train(data_path):
         all_training_games.sort()
         all_env_ids = None
     
-    get_entity_relation(path=games_dir, question_type=agent.question_type)
+    get_entity_relation(game_info=all_training_games)
     ### GAME LOOP
     while(True):
         # Break when episode limit is reached
