@@ -2,6 +2,8 @@ import argparse
 import textworld
 import numpy as np
 import re
+import requests
+import json
 
 class RandomAgent(textworld.Agent):
     """ A random agent that selects randomly chosen admissable action. """
@@ -82,12 +84,23 @@ def run_agent(agent, game, output_file, steps,epochs):
     env.close()
     return actions
 
+
+def openIE(sentence):
+    url = "http://localhost:9000/"
+    querystring = {
+        "properties": "%7B%22annotators%22%3A%20%22openie%22%7D", #{"annotators": "openie"}
+        "pipelineLanguage": "en"}
+    response = requests.request("POST", url, data=sentence, params=querystring)
+    response = json.JSONDecoder().decode(response.text)
+    return response
+
 def get_entity_relation(game_info):
     game = game_info[0]
     actions = set()
     output_file = open("./temp.txt",'w')
 
     # actions.update(run_agent(agent=WalkthroughAgent(),game=game,output_file=output_file,steps=1000,epochs=5))
+    
     actions.update(run_agent(agent=RandomAgent(),game=game,output_file=output_file,steps=1000,epochs=5))
 
     output_file.close()
@@ -97,17 +110,15 @@ def get_entity_relation(game_info):
     with open('./temp.txt', 'r') as f:
         cur = []
         for line in f:
-            # print(line)
-            if line != '---------' and "Actions:" not in str(line) and "Taken action:" not in str(
-                    line):
+            if line != '---------' and "Actions:" not in str(line) and "Taken action:" not in str(line):
                 cur.append(line)
             else:
                 cur = [a.strip() for a in cur]
                 cur = ' '.join(cur).strip().replace('\n', '').replace('---------', '')
-                cur = re.sub("(?<=-\=).*?(?=\=-)", '', cur)
+                cur = re.sub("(?<=-\=).*?(?=\=-)", '', cur) #Look into easier way
                 cur = cur.replace("-==-", '').strip()
                 cur = '. '.join([a.strip() for a in cur.split('.')])
-                output_file.write(cur + '\n')
+                output_file.write(cur + '\n')                
                 cur = []
 
     output_file.close()
@@ -119,5 +130,31 @@ def get_entity_relation(game_info):
 
     sents = input_file.read()
 
-    print(sents)
+    try: 
+        list_sen = sents.split('\n')
+        for sen in list_sen:
+            for obv in openIE(sen)['sentences']:
+                triple = obv['openie']
+                for tr in triple:
+                    h, r, t = tr['subject'], tr['relation'], tr['object']
+                    entities.add(h)
+                    entities.add(t)
+                    relations.add(r)                
+    except: 
+        print("Error: OpenIE")
+
+    act_out = open('./act2id.txt', 'w')
+    act_out.write(str({k: i for i, k in enumerate(actions)}))
+    act_out.close()
+
+    ent_out = open('./entity2id.tsv', 'w')
+    rel_out = open('./relation2id.tsv', 'w')
+
+    for i, e in enumerate(entities):
+        ent_out.write('_'.join(e.split()) + '\t' + str(i) + '\n')
+
+    ent_out.close()
+    for i, r in enumerate(relations):
+        rel_out.write('_'.join(r.split()) + '\t' + str(i) + '\n')
+    rel_out.close()
 
