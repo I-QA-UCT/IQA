@@ -519,12 +519,19 @@ class MergeEmbeddings(torch.nn.Module):
             emb = emb * mask.unsqueeze(-1)
         return emb
 
-class GraphAttentionLayer(torch.nn.Module):
+class GATlayer(torch.nn.Module):
 
-    def __init__(self, dropout, alpha):
-        super(GraphAttentionLayer, self).__init() #
+    def __init__(self, in_features, out_features, dropout, alpha, concat=False):
+        super(GATlayer, self).__init() 
         self.dropout = dropout
         self.alpha = alpha
+        self.in_features = in_features
+        self.out_features = out_features
+        self.concat = concat
+        self.activation = torch.nn.LeakyReLU(self.alpha)
+
+        self.W = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+        self.a = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
     
     def forward(self,input, adj):
         pass
