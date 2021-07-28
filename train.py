@@ -4,7 +4,7 @@ import os
 import copy
 import time
 import json
-import visdom
+import wandb
 import torch
 import numpy as np
 import tempfile
@@ -38,14 +38,20 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def train(data_path):
+def train(data_path,log_to_wandb):
     """
     Train the agent
     :param data_path: path to directory where test set folder is 
     """
 
+    
+
     time_1 = datetime.datetime.now()
     agent = Agent()
+
+    if log_to_wandb:
+        wandb.init(config=agent.config,project='IQA', entity='uct-iqa')
+        
 
     step_in_total = 0
     
@@ -426,6 +432,7 @@ def train(data_path):
         print_rewards = np.mean(np.sum(command_rewards_np, -1))
         obs_string = answerer_input[0]
         print(obs_string)
+
         # finish game
         agent.finish_of_episode(episode_no, batch_size)
         # close env
@@ -446,6 +453,10 @@ def train(data_path):
 
         time_2 = datetime.datetime.now()
         print("Episode: {:3d} | time spent: {:s} | interaction loss: {:2.3f} | qa loss: {:2.3f} | rewards: {:2.3f} | qa acc: {:2.3f}/{:2.3f} | correct state: {:2.3f}/{:2.3f}".format(episode_no, str(time_2 - time_1).rsplit(".")[0], running_avg_correct_state_loss.get_avg(), running_avg_qa_loss.get_avg(), print_rewards, r_qa, running_avg_qa_reward.get_avg(), r_sufficient_info, running_avg_sufficient_info_reward.get_avg()))
+
+        if log_to_wandb:
+            wandb.log({"Episode":episode_no,"Interaction Loss":running_avg_correct_state_loss.get_avg(),"QA Loss":running_avg_qa_loss.get_avg(),"QA Accuracy":running_avg_qa_reward.get_avg(),"Sufficient Information":running_avg_sufficient_info_reward.get_avg()},step=episode_no)
+
 
         if episode_no < agent.learn_start_from_this_episode:
             continue
@@ -479,8 +490,12 @@ def train(data_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train an agent.")
-    parser.add_argument("data_path",
-                        default="./",
+    parser.add_argument("--data_path","-d",
+                        default="./",type=str,
                         help="where the data (games) are.")
+                         
+    parser.add_argument('--log_to_wandb', "-l",
+                        action='store_true', help='Log statistics to WandB platform')
     args = parser.parse_args()
-    train(args.data_path)
+    
+    train(args.data_path,args.log_to_wandb)
