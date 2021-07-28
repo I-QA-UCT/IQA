@@ -530,11 +530,34 @@ class GATlayer(torch.nn.Module):
         self.concat = concat
         self.activation = torch.nn.LeakyReLU(self.alpha)
 
-        self.W = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
-        self.a = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+        self.weights = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
+        self.attentional_mech = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
     
     def forward(self,input, adj):
-        pass
+        h_i = torch.mm(input, self.weights) #matrix multiplication to botain W_h_i
+        h_size = h_i.size()[0] 
+        
+        attention_input = torch.cat( [h_i.reapeat(1,h_size).view(h_size*h_size,-1), h_i.repeat(h_size,1)] , dim=1).view(h_size, -1, 2 * self.out_features)
+        e_ij =torch.matmul(attention_input, self.attentional_mech) #computes attention coefficients
+        softmax_input = self.activation(e_ij).squeeze(2) #input into the softmax function
+
+        zeros = torch.zeros_like(softmax_input) #Tensor filled with 0s of size softmax_input
+        zeros = zeros.fill_(9e-15) #Fills tensor with value
+    
+        attention = torch.where(adj >0, softmax_input, zeros) #if else on tensor
+        attention = F.softmax(attention,dim=1)
+        attention = F.dropout(attention, self.dropout, training = self.training)
+        
+        h_prime = torch.matmul(attention, h_i)
+
+        if self.concat:
+            return F.elu(h_prime)
+        else:
+            return h_prime
+
+        #TODO: Look into multi-head attention
+        #TODO: Look into potentially adding nonlinearity coefficient to h_prime
+
 
     def __repr_(self):
-        pass
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
