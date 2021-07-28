@@ -15,6 +15,7 @@ python -m spacy download en
 pip install tqdm h5py visdom pyyaml
 conda install pytorch torchvision cudatoolkit=9.2 -c pytorch
 pip install gym==0.15.4 (Dependency Issue with Original Code)
+conda install h5py (Dependency Issue with Original Code)
 ```
 
 ## Test Set

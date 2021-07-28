@@ -1,8 +1,8 @@
 # General Settings
 general:
-  train_data_size: 1  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 500  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
-  random_map: False  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
+  random_map: True  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"  # location, existence, attribute
   random_seed: 42  # the secret of deep learning.
   naozi_capacity: 1  # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
@@ -31,9 +31,9 @@ evaluate:
 checkpoint:
   save_checkpoint: True # Save model checkpoints
   save_frequency: 1000  # episode
-  experiment_tag: 'a2c_location_1_fixed'
+  experiment_tag: 'a2c_location_500_random_pretrained'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: ''  # if you want to load from prev experiment
+  load_from_tag: 'a2c_location_500_random_pretrained'  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
@@ -49,7 +49,7 @@ distributional:
   v_min: -10
   v_max: 10
 
-# Use previous command word q values in generating q value of next command word
+# Use previous command word q values as input into network generating q values of next command word
 dqn_conditioning: False
 
 #use dueling networks
@@ -66,7 +66,7 @@ a2c:
 # Intrinsic Curiosity Module Settings
 icm:
   enable: False
-  scaling_factor: 2
+  scaling_factor: 1
   beta: 0.2
   lambda: 0.1
   hidden_size: 64
@@ -88,9 +88,9 @@ episodic_counting_bonus:
   revisit_counting_lambda_anneal_to: 0.0
 
 model:
-  use_pretrained_embedding: False
+  use_pretrained_embedding: True
   word_embedding_size: 300
-  word_embedding_trainable: True
+  word_embedding_trainable: False
   char_embedding_size: 32
   char_embedding_trainable: True
   embedding_dropout: 0.

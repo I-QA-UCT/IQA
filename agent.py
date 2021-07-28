@@ -20,8 +20,7 @@ from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
 
 
-# TODO fix actor critic loss function to work for batches
-# TODO fix actor critic to work on cuda
+# TODO investigate new ICM inspired by Need for semantics paper
 
 class Agent:
     def __init__(self):
