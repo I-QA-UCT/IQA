@@ -15,7 +15,37 @@ def openIE(sentence):
 class SupplementaryKG(object):
 
     def __init__(self):
-        pass
+        self.graph_state = nx.DiGraph()
+        
+        self.vocab, self.actions, self.vocab_er = self.load_files()
 
     def load_files(self):
+        vocab = {}
+        i = 0
+        with open('vocabularies/word_vocab.txt', 'r') as file_output:
+            for i, line in enumerate(file_output):
+                vocab[line.strip()] = i
+
+        actions = eval(open('act2id.txt', 'r').readline())
+
+        entities = {}
+        with open("entity2id.tsv", 'r') as file_output:
+            for line in file_output:
+                entity, entity_id = line.split('\t')
+                entities[entity.strip()] = int(entity_id.strip())
+
+        relations = {}
+        with open("relation2id.tsv", 'r') as file_output:
+            for line in file_output:
+                relation, relation_id = line.split('\t')
+                relations[relation.strip()] = int(relation_id.strip())
+        
+        entity_relation_dict = {'entity': entities, 'relation': relations}
+        
+        return vocab, actions, entity_relation_dict
+
+    def update_state(self, state, previous_action=None):
         pass
+
+if __name__ == '__main__':
+    test = SupplementaryKG()
