@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from layers import Embedding, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear
+from layers import Embedding, GATlayer, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear
 
 logger = logging.getLogger(__name__)
 
@@ -241,3 +241,22 @@ class DQN(torch.nn.Module):
             if self.answer_type in ["2 way"]:
                 self.question_answerer_output_1.zero_noise()
                 self.question_answerer_output_2.zero_noise()
+
+class GAT(torch.nn.Module):
+
+    def __init__(self, num_features, num_hidden, num_class, dropout, alpha, num_heads):
+        super(GAT, self).__init__()
+        self.dropout = dropout
+
+        self.attentions = [GATlayer(num_features, num_hidden, dropout,alpha,concant=False) for i in range (num_heads)]
+
+        for i, attention in enumerate(self.attentions):
+            self.add_module('attention_{}'.format(i), attention)
+        
+        self.out_attention = GATlayer(num_hidden * num_heads, num_class, dropout, alpha, concat=False)
+
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = torch.cat([attention(x, adj) for attention in self.attentions], dim=1)
+        x = F.dropout(x,self.dropout, training=self.training)
+        return x    
