@@ -518,3 +518,16 @@ class MergeEmbeddings(torch.nn.Module):
         if mask is not None:
             emb = emb * mask.unsqueeze(-1)
         return emb
+
+class GraphAttentionLayer(torch.nn.Module):
+
+    def __init__(self, dropout, alpha):
+        super(GraphAttentionLayer, self).__init() #
+        self.dropout = dropout
+        self.alpha = alpha
+    
+    def forward(self,input, adj):
+        pass
+
+    def __repr_(self):
+        pass

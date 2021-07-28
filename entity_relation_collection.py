@@ -19,38 +19,38 @@ class RandomAgent(textworld.Agent):
     def act(self, state, reward, done):
         return self.rng.choice(state.admissible_commands)
 
-# class WalkthroughDone(NameError):
-#     pass
+class WalkthroughDone(NameError):
+    pass
 
-# class WalkthroughAgent(textworld.Agent):
-#     """ Agent that follows a given list of commands"""
+class WalkthroughAgent(textworld.Agent):
+    """ Agent that follows a given list of commands"""
 
-#     def __init__(self, commands=None):
-#         self.commands = commands
+    def __init__(self, commands=None):
+        self.commands = commands
     
-#     def reset(self, env):
-#         env.activate_state_tracking()
-#         env.display_command_during_render = True
+    def reset(self, env):
+        env.activate_state_tracking()
+        env.display_command_during_render = True
         
-#         if self.commands is not None:
-#             self._commands = iter(self.commands)
-#             return  # Commands already specified.
+        if self.commands is not None:
+            self._commands = iter(self.commands)
+            return  # Commands already specified.
         
-#         if not hasattr(env, "game"):
-#             raise NameError("WalkthroughAgent is only supported for generated games")
+        if not hasattr(env, "game"):
+            raise NameError("WalkthroughAgent is only supported for generated games")
 
-#         print(env.game.quests)
-        # self._commands = iter(env.game.quests[0].commands)
+        print(env.game.quests)
+        self._commands = iter(env.game.quests[0].commands)
 
     
-    # def act(self, state, reward, done):
-    #     try:
-    #         action = next(self._commands)
-    #     except StopIteration:
-    #         raise WalkthroughDone()
+    def act(self, state, reward, done):
+        try:
+            action = next(self._commands)
+        except StopIteration:
+            raise WalkthroughDone()
 
-    #     action = action.strip()
-    #     return action
+        action = action.strip()
+        return action
         
 
 
