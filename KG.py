@@ -21,6 +21,7 @@ class SupplementaryKG(object):
         self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
         self.room = "" #Room at the centre of KG
+        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Representation for attention to be used in GAT
 
     def load_files(self):
         vocab = {}
@@ -173,5 +174,28 @@ class SupplementaryKG(object):
 
         return
 
+    def get_state_representation(self):
+
+        result = []
+        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Set matrix to zeros
+
+        for source, target in self.graph_state.edges:
+            source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
+            target = '_'.join(str(target).split())
+
+            #Ignore words not in discovered by agent in entity_relation_collection.py
+            if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
+                break
+
+            source_id = self.vocab_er['entity'][source]    
+            target_id = self.vocab_er['entity'][target]      
+            self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
+
+            result.append(self.vocab_er['entity'][source])
+            result.append(self.vocab_er['entity'][target])
+
+        return list(set(result))
+
 if __name__ == '__main__':
+
     test = SupplementaryKG()
