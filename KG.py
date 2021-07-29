@@ -17,11 +17,14 @@ def openIE(sentence):
 class SupplementaryKG(object):
 
     def __init__(self):
-        self.graph_state = nx.DiGraph()
+    
         self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
         self.room = "" #Room at the centre of KG
-        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Representation for attention to be used in GAT
+        
+        self.graph_state = nx.DiGraph()
+        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
+        self.graph_state_rep = []  #Representation attention between entities 
 
     def load_files(self):
         vocab = {}
@@ -195,6 +198,10 @@ class SupplementaryKG(object):
             result.append(self.vocab_er['entity'][target])
 
         return list(set(result))
+
+    def step(self, visible_state, prev_action=None):
+        self.update_state(visible_state, prev_action)
+        self.graph_state_rep = self.get_state_representation(), self.adj_matrix
 
 if __name__ == '__main__':
 
