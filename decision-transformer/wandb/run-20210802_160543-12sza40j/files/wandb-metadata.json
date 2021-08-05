@@ -1,0 +1,25 @@
+{
+    "os": "Linux-4.15.0-134-generic-x86_64-with-glibc2.27",
+    "python": "3.9.5",
+    "heartbeatAt": "2021-08-02T14:05:45.913427",
+    "startedAt": "2021-08-02T14:05:43.535190",
+    "docker": null,
+    "cpu_count": 4,
+    "cuda": null,
+    "args": [
+        "--env",
+        "random_rollout"
+    ],
+    "state": "running",
+    "program": "/home/gregory/CS/honours/thesis/decision-transformer/qait/experiment.py",
+    "codePath": "qait/experiment.py",
+    "git": {
+        "remote": "https://github.com/kzl/decision-transformer",
+        "commit": "f128fa718fe81558fde9193f03a6091767495256"
+    },
+    "email": "gregfurman99@gmail.com",
+    "root": "/home/gregory/CS/honours/thesis/decision-transformer",
+    "host": "gregory-XPS-13-9360",
+    "username": "gregory",
+    "executable": "/home/gregory/venvs/qait-offline-rl/bin/python"
+}
