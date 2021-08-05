@@ -277,7 +277,26 @@ class StateNetwork(torch.nn.Module):
         self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, 100)
 
     def init_state_ent_emb(self):
-        pass
+        embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
+        for i in range(len(self.vocab_kge)):
+            graph_node_text = self.vocab_kge[i].split('_') #Text in OpenIE extractioned entities
+            graph_node_ids = []
+            for w in graph_node_text:
+                if w in self.vocab.keys(): 
+                    if self.vocab[w] < len(self.vocab) - 2:
+                        graph_node_ids.append(self.vocab[w])
+                    else:
+                        graph_node_ids.append(1)
+                else:
+                    graph_node_ids.append(1)
+            graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
+            cur_embeds = self.pretrained_embeds(graph_node_ids)
+
+            cur_embeds = cur_embeds.mean(dim=0)
+            embeddings[i, :] = cur_embeds
+        self.state_ent_emb = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+
+
 
     def load_files(self):
         entities = {}
@@ -298,4 +317,8 @@ class StateNetwork(torch.nn.Module):
 
 
     def forward(self, graph_rep):
-        pass
+        _, adj = graph_rep
+        adj = torch.IntTensor(adj).cuda()
+        x = self.gat(self.init_state_ent_emb.weight,adj).view(-1)
+        out = self.fc1(x)
+        return out

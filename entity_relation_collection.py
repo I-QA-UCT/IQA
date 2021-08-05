@@ -95,6 +95,7 @@ def openIE(sentence):
     return response
 
 def get_entity_relation(game_info):
+
     game = game_info[0]
     actions = set()
     output_file = open("./temp.txt",'w')
