@@ -199,6 +199,7 @@ class SupplementaryKG(object):
 
         return list(set(result))
 
+    #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
         self.update_state(visible_state, prev_action)
         self.graph_state_rep = self.get_state_representation(), self.adj_matrix

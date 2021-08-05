@@ -40,7 +40,7 @@ class WalkthroughAgent(textworld.Agent):
             raise NameError("WalkthroughAgent is only supported for generated games")
 
         print(env.game.quests)
-        self._commands = iter(env.game.quests[0].commands)
+        self._commands = iter(env.game.quests[1].commands)
 
     
     def act(self, state, reward, done):

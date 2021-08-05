@@ -258,5 +258,44 @@ class GAT(torch.nn.Module):
     def forward(self, x, adj):
         x = F.dropout(x, self.dropout, training=self.training)
         x = torch.cat([attention(x, adj) for attention in self.attentions], dim=1)
-        x = F.dropout(x,self.dropout, training=self.training)
+        x = F.dropout(x, self.dropout, training=self.training)
         return x    
+
+class StateNetwork(torch.nn.Module):
+    def __init__(self, action_set, params, embeddings=None):
+        super(StateNetwork,self).__init__()
+        self.action_set = action_set
+
+        self.GAT = GAT(num_features=params['GAT_emb_size'], num_hidden=3, num_class=len(action_set), dropout=params['dropout_ratio'], alpha=0.2, concat=1)
+        if params['qa_init']:
+            self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+        else:
+            self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
+
+        self.vocab_kge, self.vocab = self.load_files()
+        self.init_state_ent_emb()
+        self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, 100)
+
+    def init_state_ent_emb(self):
+        pass
+
+    def load_files(self):
+        entities = {}
+
+        #TODO: Investigate initialze_double/entity2id.tsv
+        with open("entity2id.tsv", 'r') as file_output:
+            for line in file_output:
+                entity, entity_id = line.split('\t')
+                entities[int(entity_id.strip())] = entity.strip()
+
+        vocab = {}
+        i = 0
+        with open('vocabularies/word_vocab.txt', 'r') as file_output:
+            for i, line in enumerate(file_output):
+                vocab[line.strip()] = i
+
+        return entities, vocab
+
+
+    def forward(self, graph_rep):
+        pass

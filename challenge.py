@@ -636,7 +636,7 @@ def make_game(settings: Mapping[str, str], options: Optional[GameOptions] = None
     rng_objects = rngs['objects']
     rng_grammar = rngs['grammar']
     rng_quest = rngs["quest"]
-
+    
     grammar = Grammar(options.grammar, rng=rng_grammar)
     M = textworld.GameMaker(kb=options._kb, grammar=grammar)
     M.used_names = set()  # Going to use it to avoid duplicate names.
