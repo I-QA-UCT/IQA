@@ -4,7 +4,6 @@ import requests
 import numpy as np
 from nltk import sent_tokenize, word_tokenize
 
-
 def openIE(sentence):
     url = "http://localhost:9000/"
     querystring = {
@@ -148,7 +147,7 @@ class SupplementaryKG(object):
         
         edges = list(self.graph_state.edges)
 
-        print("add", add_rules)
+        # print("add", add_rules)
 
         #Remove edges from KG that are no longer needed
         for edge in edges:
@@ -164,23 +163,23 @@ class SupplementaryKG(object):
         for rule in add_rules:
             u = '_'.join(str(rule[0]).split())
             v = '_'.join(str(rule[2]).split())
-            if u in self.vocab_kge['entity'].keys() and v in self.vocab_kge['entity'].keys():
+            if u in self.vocab_er['entity'].keys() and v in self.vocab_er['entity'].keys():
                 if u != 'it' and v != 'it':
                     self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
-        print("pre", self.graph_state.edges)
+        # print("pre", self.graph_state.edges)
 
         if prev_room_subgraph is not None:
             self.graph_state.add_edges_from(prev_room_subgraph.edges)
 
-        print(self.graph_state.edges)
+        # print(self.graph_state.edges)
 
         return
 
     def get_state_representation(self):
 
         result = []
-        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Set matrix to zeros
+        self.adj_matrix = np.zeros((len(self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
 
         for source, target in self.graph_state.edges:
             source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er

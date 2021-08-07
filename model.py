@@ -319,7 +319,7 @@ class StateNetwork(torch.nn.Module):
 
     def forward(self, graph_rep):
         _, adj = graph_rep
-        adj = torch.IntTensor(adj).cuda()
-        x = self.gat(self.init_state_ent_emb.weight,adj).view(-1)
+        adj = torch.IntTensor(adj)#.cuda()
+        x = self.GAT(self.state_ent_emb.weight,adj).view(-1)
         out = self.fc1(x)
         return out
