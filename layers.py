@@ -522,7 +522,7 @@ class MergeEmbeddings(torch.nn.Module):
 class GATlayer(torch.nn.Module):
 
     def __init__(self, in_features, out_features, dropout, alpha, concat=False):
-        super(GATlayer, self).__init() 
+        super(GATlayer, self).__init__() 
         self.dropout = dropout
         self.alpha = alpha
         self.in_features = in_features
@@ -559,5 +559,5 @@ class GATlayer(torch.nn.Module):
         #TODO: Look into potentially adding nonlinearity coefficient to h_prime
 
 
-    def __repr_(self):
+    def __repr__(self):
         return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'

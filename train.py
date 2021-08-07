@@ -99,7 +99,7 @@ def train(data_path):
         all_training_games.sort()
         all_env_ids = None
     
-    get_entity_relation(game_info=all_training_games)
+    # get_entity_relation(game_info=all_training_games)
     # get_entity_relation([all_training_games[0]])
 
     ### GAME LOOP

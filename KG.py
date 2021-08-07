@@ -23,7 +23,7 @@ class SupplementaryKG(object):
         self.room = "" #Room at the centre of KG
         
         self.graph_state = nx.DiGraph()
-        self.adj_matrix = np.zeros(len(self.vocab_er['entity'], len(self.vocab_er['entity']))) #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
+        self.adj_matrix = np.zeros((len(self.vocab_er['entity']), len(self.vocab_er['entity']))) #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
         self.graph_state_rep = []  #Representation attention between entities 
 
     def load_files(self):

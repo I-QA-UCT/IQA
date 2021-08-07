@@ -154,7 +154,7 @@ class DQN(torch.nn.Module):
         M0 = F.dropout(M0, p=self.block_dropout, training=self.training)
         square_mask = torch.bmm(doc_mask.unsqueeze(-1), doc_mask.unsqueeze(1))  # batch x time x time
         for i in range(self.aggregation_layers):
-             M0 = self.aggregators[i](M0, doc_mask, square_mask, i * (self.aggregation_conv_num + 2) + 1, self.aggregation_layers)
+            M0 = self.aggregators[i](M0, doc_mask, square_mask, i * (self.aggregation_conv_num + 2) + 1, self.aggregation_layers)
         return M0
 
     def representation_generator(self, _input_words, _input_chars):
@@ -248,7 +248,7 @@ class GAT(torch.nn.Module):
         super(GAT, self).__init__()
         self.dropout = dropout
 
-        self.attentions = [GATlayer(num_features, num_hidden, dropout,alpha,concant=False) for i in range (num_heads)]
+        self.attentions = [GATlayer(num_features, num_hidden, dropout,alpha,concat=False) for i in range (num_heads)]
 
         for i, attention in enumerate(self.attentions):
             self.add_module('attention_{}'.format(i), attention)
@@ -264,9 +264,10 @@ class GAT(torch.nn.Module):
 class StateNetwork(torch.nn.Module):
     def __init__(self, action_set, params, embeddings=None):
         super(StateNetwork,self).__init__()
+        self.params = params
         self.action_set = action_set
 
-        self.GAT = GAT(num_features=params['GAT_emb_size'], num_hidden=3, num_class=len(action_set), dropout=params['dropout_ratio'], alpha=0.2, concat=1)
+        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=3, num_class=len(action_set), dropout=params['dropout_ratio'], alpha=0.2, num_heads=1)
         if params['qa_init']:
             self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
         else:
@@ -289,7 +290,7 @@ class StateNetwork(torch.nn.Module):
                         graph_node_ids.append(1)
                 else:
                     graph_node_ids.append(1)
-            graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
+            graph_node_ids = torch.LongTensor(graph_node_ids)#.cuda()
             cur_embeds = self.pretrained_embeds(graph_node_ids)
 
             cur_embeds = cur_embeds.mean(dim=0)
