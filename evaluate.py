@@ -1,3 +1,10 @@
+import argparse
+import torch
+import pickle
+
+from decision_transformer import model_qait
+from decision_transformer import trajectory_gpt2
+
 import numpy as np
 from textworld.generator import data
 import generic
@@ -29,11 +36,33 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def evaluate(data_path, agent):
+def evaluate(data_path, agent,variant):
     """
     Evaluate an agent on a test set
     """
     eval_data_path = pjoin(data_path, agent.eval_data_path)
+
+    decision_transformer = variant["decision_transformer"]
+
+    config = pickle.load(open(f"./{variant['model_dir']}/{variant['model']}_config.pkl", "rb"))
+
+    print(config)
+    model = model_qait.DecisionTransformer(
+            state_dim=config["sentence_tensor_length"],
+            act_dim = 3,
+            max_length=config["K"],
+            max_ep_len=50,
+            hidden_size=config['embed_dim'],
+            n_layer=config['n_layer'],
+            n_head=config['n_head'],
+            n_inner=4*config['embed_dim'],
+            activation_function=config['activation_function'],
+            n_positions=1024,
+            resid_pdrop=config['dropout'],
+            attn_pdrop=config['dropout'],
+        )
+    model.load_state_dict(torch.load(f"{variant['model_dir']}/{variant['model']}.pt"))
+    model.eval()
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -56,6 +85,7 @@ def evaluate(data_path, agent):
 
         for q_no in range(len(data_questions)):
             questions = data_questions[q_no: q_no + 1]
+
             answers = data_answers[q_no: q_no + 1]
             reward_helper_info = {"_entities": data_entities[q_no: q_no + 1],
                                   "_answers": data_answers[q_no: q_no + 1]}
@@ -82,6 +112,9 @@ def evaluate(data_path, agent):
 
             transition_cache = []
 
+            state_strings = agent.get_state_strings(infos)
+            counting_rewards = [agent.get_binarized_count(state_strings, update=True)] # batch x reward x timestep
+
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
                 for i in range(batch_size):
@@ -96,7 +129,13 @@ def evaluate(data_path, agent):
 
                 observation_strings_w_history = agent.naozi.get()
                 input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
-                commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
+
+                # Batch size of 1 for now
+                if decision_transformer:
+                    commands, replay_info = agent.act_decision_transformer(commands_per_step,[step_no]*batch_size,obs, observation_strings_w_history,questions,counting_rewards,model=model)
+                else:
+                    commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
+
                 for i in range(batch_size):
                     commands_per_step[i].append(commands[i])
 
@@ -107,7 +146,10 @@ def evaluate(data_path, agent):
                 # possible words no not depend on history, because one can only interact with what is currently accessible
                 observation_strings, possible_words = agent.get_game_info_at_certain_step(obs, infos)
                 observation_strings = [a + " <|> " + item for a, item in zip(commands, observation_strings)]
-
+                
+                state_strings = agent.get_state_strings(infos)
+                counting_rewards.append(agent.get_binarized_count(state_strings, update=True))
+                
                 if (step_no == agent.eval_max_nb_steps_per_episode - 1 ) or (step_no > 0 and np.sum(generic.to_np(replay_info[-1])) == 0):
                     break
 
@@ -160,9 +202,11 @@ def evaluate(data_path, agent):
             r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
+        print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+
         env.close()
 
-    print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+    # print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
     return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)
 
 if (__name__ == "__main__"):
@@ -180,4 +224,13 @@ if (__name__ == "__main__"):
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
-    evaluate(agent=agent,data_path="./")
+    parser = argparse.ArgumentParser(description="Evaluate using decision transformer.")
+    parser.add_argument("--decision_transformer","-dt",
+                    default=True)
+    parser.add_argument("--model","-m",
+                    default="random_rollout")
+    parser.add_argument("--model_dir","-md",
+                    default="decision_transformer/saved_models")
+    args = parser.parse_args()
+
+    evaluate(agent=agent,data_path="./",variant=vars(args))

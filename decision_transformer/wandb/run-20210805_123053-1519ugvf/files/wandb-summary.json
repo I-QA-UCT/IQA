@@ -1,0 +1,1 @@
+{"time/training": 50.753687620162964, "time/total": 3499.268312692642, "time/evaluation": 1.430511474609375e-06, "training/train_loss_mean": 16.45949821472168, "training/train_loss_std": 0.007499772883462057, "training/action_error": 16.45661163330078, "_runtime": 3499, "_timestamp": 1628162952, "_step": 72}

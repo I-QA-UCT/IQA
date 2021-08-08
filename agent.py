@@ -393,6 +393,7 @@ class Agent:
             action_indices.append(to_pt(indices, self.use_cuda))  # batch
         return action_indices
 
+
     def get_chosen_strings(self, chosen_indices):
         """
         Turns list of word indices into actual command strings.
@@ -482,8 +483,74 @@ class Agent:
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
+    
+    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observation,questions,returns_to_go,model=None):
+        """
+        Acts upon the current list of observations.
+        One text command must be returned for each observation.
+        """
 
-    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False):
+        def command_to_id(command):
+            act, mod, obj = "", "</s>" , "<pad>" 
+            
+            # for commands in commands_per_step:
+            command = command.split()
+
+            if len(command) == 3:
+                act, mod, obj = command
+            elif len(command) == 2:
+                act,obj,mod = *command, "</s>"
+            elif len(command) == 1:
+                    act = command[0]
+
+            return [self.word2id[act],self.word2id[mod],self.word2id[obj]]
+            
+        def pad_input(sentence,question,seq_len):
+        
+            sentence = "<s> "+ sentence + " <|> " +question + " </s>"
+            # If word doesn't exist - return <unk>
+            sentence_ids = [self.word2id.get(word,1) for word in sentence.split()]
+
+            diff = len(sentence_ids) - seq_len
+
+            if diff > 0:
+                del sentence_ids[-(diff+1):-1]
+            elif diff < 0:
+                sentence_ids.extend(abs(diff)*[0])
+                            
+            return sentence_ids
+
+        with torch.no_grad():
+            batch_size = len(obs)
+            chosen_indices = []
+            chosen_strings = []
+
+            for i in range(batch_size):
+                command = model.get_command(pad_input(input_observation[i],questions[i],170),command_to_id(commands_per_step[i][-1]),returns_to_go[i],timesteps)
+                word_indices_dt = list(command)
+                chosen_indices.append(word_indices_dt)
+            
+            chosen_indices = torch.Tensor(chosen_indices).long()
+            chosen_indices = torch.transpose(chosen_indices, 0, 1)
+            chosen_strings = self.get_chosen_strings(chosen_indices)
+
+            for i in range(batch_size):
+                if chosen_strings[i] == "wait":
+                    self.not_finished_yet[i] = 0.0
+
+            # info for replay memory
+            for i in range(batch_size):
+                if self.prev_actions[-1][i] == "wait":
+                    self.prev_step_is_still_interacting[i] = 0.0
+            # previous step is still interacting, this is because DQN requires one step extra computation
+            replay_info = [chosen_indices, to_pt(self.prev_step_is_still_interacting, self.use_cuda, "float")]
+
+            # cache new info in current game step into caches
+            self.prev_actions.append(chosen_strings)
+            return chosen_strings, replay_info
+
+
+    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False,decision_transformer=False):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
@@ -501,7 +568,10 @@ class Agent:
         """
         with torch.no_grad():
             if self.mode == "eval":
-                return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                if decision_transformer:
+                    return self.act_decision_transformer(obs, infos, input_observation, input_quest)
+                else:
+                    return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
             if random:
                 return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
             batch_size = len(obs)
@@ -512,6 +582,7 @@ class Agent:
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+ 
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
             word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
     
