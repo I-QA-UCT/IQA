@@ -90,7 +90,7 @@ class SupplementaryKG(object):
         remove = []    
         link = []
 
-        #Iterate through all relations set current room, add links and add all relations to previously removed or removed list
+        #Iterate through all relations, set current room, add links and add all relations to previously removed or removed list
         for rule in rules:
             subject, relation, object = rule
             if 'entered' in relation or 'are in' in relation:
@@ -103,7 +103,7 @@ class SupplementaryKG(object):
             if 'see' in relation or 'make out' in relation:
                 link.append((relation, object)) #Add link between relation and object to list
                 remove.append(relation)
-
+        
         prev_room = self.room
         self.room = room
         add_rules = []
@@ -127,7 +127,9 @@ class SupplementaryKG(object):
                     if prev_room != "":
                         #Get previous room and previous "you" subgraphs
                         graph_copy = self.graph_state.copy()
-                        graph_copy.remove_edge('you', prev_room)
+
+                        if ('you', prev_room) in graph_copy.edges:
+                            graph_copy.remove_edge('you', prev_room)
 
                         con_cs = [graph_copy.subgraph(c) for c in nx.weakly_connected_components(graph_copy)]
 
@@ -148,7 +150,7 @@ class SupplementaryKG(object):
         
         edges = list(self.graph_state.edges)
 
-        print("add", add_rules)
+        # print("add", add_rules)
 
         #Remove edges from KG that are no longer needed
         for edge in edges:
@@ -168,14 +170,12 @@ class SupplementaryKG(object):
                 if u != 'it' and v != 'it':
                     self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
-        print("pre", self.graph_state.edges)
+        # print("pre", self.graph_state.edges)
 
         if prev_room_subgraph is not None:
             self.graph_state.add_edges_from(prev_room_subgraph.edges)
 
-        print(self.graph_state.edges)
-
-        print(self.graph_state.size())
+        # print(self.graph_state.edges)
 
         return
 
