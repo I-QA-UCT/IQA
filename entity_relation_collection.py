@@ -96,13 +96,13 @@ def openIE(sentence):
 
 def get_entity_relation(game_info):
 
-    game = game_info[0]
     actions = set()
     output_file = open("./temp.txt",'w')
 
-    # actions.update(run_agent(agent=WalkthroughAgent(),game=game,output_file=output_file,steps=1000,epochs=5))
-    
-    actions.update(run_agent(agent=RandomAgent(),game=game,output_file=output_file,steps=1000,epochs=5))
+    for i,game in enumerate(game_info):
+        # actions.update(run_agent(agent=WalkthroughAgent(),game=game,output_file=output_file,steps=1000,epochs=5))
+        actions.update(run_agent(agent=RandomAgent(),game=game,output_file=output_file,steps=1000,epochs=10))
+        print("Collected from game", i+1)
 
     output_file.close()
 
@@ -125,11 +125,11 @@ def get_entity_relation(game_info):
     output_file.close()
 
     input_file = open('./cleaned_temp.txt', 'r')
+    sents = input_file.read()
+    input_file.close()
 
     entities = set()
     relations = set()
-
-    sents = input_file.read()
 
     try: 
         list_sen = sents.split('\n')
