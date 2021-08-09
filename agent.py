@@ -58,7 +58,9 @@ class Agent:
                 self.online_net.cuda()
 
         if self.icm:
-            self.curiosity_module = ICM(self.config,self.config['model']['block_hidden_dim'],3*self.config['model']['block_hidden_dim'])
+            # TRY SIMPLE
+            self.curiosity_module = ICM(self.config,self.config['model']['block_hidden_dim'],3*self.config['model']['word_embedding_size'],len(self.word2id))
+            self.curiosity_module.train()
             if self.use_cuda:
                 self.curiosity_module.cuda()
                 
@@ -66,7 +68,7 @@ class Agent:
         # optimizer
         if self.icm:
             self.optimizer = torch.optim.Adam(list(self.online_net.parameters(
-        ))+self.curiosity_module.model_params, lr=self.config['training']['optimizer']['learning_rate'])
+        ))+list(self.curiosity_module.parameters()), lr=self.config['training']['optimizer']['learning_rate'])
         else:
             self.optimizer = torch.optim.Adam(self.online_net.parameters(
         ), lr=self.config['training']['optimizer']['learning_rate'])
@@ -121,6 +123,7 @@ class Agent:
 
         # ICM
         self.icm = self.config['icm']['enable']
+        self.use_intrinsic_reward = self.config['icm']['use_intrinsic_reward']
         
 
         # Set the random seed manually for reproducibility.
@@ -284,8 +287,10 @@ class Agent:
         for command in commands:
             padded_command = command
             length = len(command.split())
-            if length<3:
-                padded_command += " <pad>"*(3-length)
+            if length<2:
+                padded_command += " </s> <pad>"
+            elif length<3:
+                padded_command += " </s>"
             padded_commands.append(padded_command)
         return padded_commands
 
@@ -633,6 +638,7 @@ class Agent:
 
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
+
             probs, value = self.get_ranks(input_observation, input_observation_char, input_quest,
                                           input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
             value = value.permute(1, 0).squeeze(0)
@@ -721,17 +727,23 @@ class Agent:
         if data is None:
             return None
 
-        enc_state_list,enc_action_list,enc_next_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
-        
+        enc_state_list,state_char_list,enc_action_list,enc_next_list,next_state_char_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
+        # print(enc_action_list)
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
         if self.icm:
-            encoded_states = pad_sequence(enc_state_list).permute(1,0,2)
-            encoded_next_states = pad_sequence(enc_next_list).permute(1,0,2)
-            encoded_actions = torch.stack(enc_action_list)
+            input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(enc_state_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(enc_next_list)
             
+            encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+            encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            action_inputs = torch.stack(enc_action_list)
+
+            encoded_actions,_ = self.online_net.word_embedding(action_inputs)
+
             forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask
             icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
                   
             
@@ -796,8 +808,8 @@ class Agent:
             self.replay_batch_size, self.multi_step)
         if data is None:
             return None
-
-        enc_state_list,enc_action_list,enc_next_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        
+        enc_state_list,state_char_list,enc_action_list,enc_next_list,next_state_char_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         batch_size = len(actual_n_list)
 
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
@@ -810,14 +822,20 @@ class Agent:
         
 
         if self.icm:
-            encoded_states = pad_sequence(enc_state_list).permute(1,0,2)
-            encoded_next_states = pad_sequence(enc_next_list).permute(1,0,2)
-            encoded_actions = torch.stack(enc_action_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(enc_state_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(enc_next_list)
             
+            encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+            encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            action_inputs = torch.stack(enc_action_list)
+
+            encoded_actions,_ = self.online_net.word_embedding(action_inputs)
+
             forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
+            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask
             icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
                   
+            
             
         possible_words, next_possible_words = [], []
         for i in range(3):
@@ -943,7 +961,7 @@ class Agent:
 
         if self.icm:
             torch.nn.utils.clip_grad_norm_(
-            self.curiosity_module.model_params, self.clip_grad_norm)
+            self.curiosity_module.parameters(), self.clip_grad_norm)
     
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(

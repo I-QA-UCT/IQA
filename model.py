@@ -541,19 +541,45 @@ class ICM_Inverse(torch.nn.Module):
     ICM - Inverse Model - used to predict action from two consecutive states. This enables the feature model to learn a valuable feature representation.
     """
 
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size,vocab_size):
         super(ICM_Inverse, self).__init__()
-        self.inverse_net = torch.nn.Sequential(
-            torch.nn.Linear(input_size, hidden_size),
-            torch.nn.ELU(),
-            torch.nn.Linear(hidden_size, hidden_size),
-            torch.nn.ELU(),
-            torch.nn.Linear(hidden_size, output_size)
-        )
+        # self.inverse_net = torch.nn.Sequential(
+        #     torch.nn.Linear(input_size, hidden_size),
+        #     torch.nn.ELU(),
+        #     torch.nn.Linear(hidden_size, hidden_size),
+        #     torch.nn.ELU(),
+        #     torch.nn.Linear(hidden_size, output_size)
+        # )
+        self.action_decoder = torch.nn.Sequential(
+            torch.nn.Linear(input_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,vocab_size),
+            torch.nn.Softmax(dim=-1))
+        self.modifier_decoder = torch.nn.Sequential(
+            torch.nn.Linear(input_size+vocab_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,vocab_size),
+            torch.nn.Softmax(dim=-1))
+        self.object_decoder = torch.nn.Sequential(
+            torch.nn.Linear(input_size+2*vocab_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size,vocab_size),
+            torch.nn.Softmax(dim=-1))
 
     def forward(self, state_feature, next_state_feature):
         input = torch.cat([state_feature, next_state_feature], dim=-1)
-        return self.inverse_net(input)
+        # rep = self.inverse_net(input)
+        rep = input
+        action_dist = self.action_decoder(rep)
+        modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
+        object_dist = self.object_decoder(torch.cat([rep,action_dist,modifier_dist],dim=-1))
+        return action_dist,modifier_dist,object_dist
 
 
 class ICM_Forward(torch.nn.Module):
@@ -570,7 +596,7 @@ class ICM_Forward(torch.nn.Module):
 
     def forward(self, state_feature, action_embedding):
         
-        action_embedding = action_embedding.view(len(action_embedding),3*len(action_embedding[0][0]))
+        action_embedding = action_embedding.reshape(len(action_embedding),3*len(action_embedding[0][0]))
         input = torch.cat([state_feature, action_embedding], dim=-1)
         
         return self.forward_net(input)
@@ -580,39 +606,41 @@ class ICM_Feature(torch.nn.Module):
 
     def __init__(self, state_embedding_size, hidden_size, feature_size):
         super(ICM_Feature, self).__init__()
-      
-        self.encoder = torch.nn.LSTM(state_embedding_size,state_embedding_size,batch_first=True)
-        self.feature_net = torch.nn.Sequential(
-            torch.nn.Linear(state_embedding_size, hidden_size),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size, hidden_size),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size, feature_size)
-        )
+
+        self.encoder = torch.nn.GRU(state_embedding_size,feature_size,batch_first=True)
+        
+        # self.feature_net = torch.nn.Sequential(
+        #     torch.nn.Linear(state_embedding_size, hidden_size),
+        #     torch.nn.LeakyReLU(),
+        #     torch.nn.Linear(hidden_size, hidden_size),
+        #     torch.nn.LeakyReLU(),
+        #     torch.nn.Linear(hidden_size, feature_size)
+        # )
 
     def forward(self, input):
-        out,_ = self.encoder(input)
-        final_hidden_state = out[:,-1,:]
-        return self.feature_net(final_hidden_state)
+        _,out = self.encoder(input)
+        
+        # return self.feature_net(out.permute(1,0,2).squeeze(1))
+        return out.permute(1,0,2).squeeze(1)
 
 
-class ICM():
+class ICM(torch.nn.Module):
     """
     Intrinsic Curiosity Module - used to instill curiosity into agent.
     """
 
-    def __init__(self, config, state_input_size, action_size):
+    def __init__(self, config, state_input_size, action_size,vocab_size):
+        super(ICM, self).__init__()
         self.config = config
         self.read_config()
 
-        self.feature = ICM_Feature(
+        self.feature_model = ICM_Feature(
             state_input_size, self.hidden_size, self.feature_size)
-        self.inverse = ICM_Inverse(
-            self.feature_size*2, self.hidden_size, action_size)
-        self.forward = ICM_Forward(
+        self.inverse_model = ICM_Inverse(
+            self.feature_size*2, self.hidden_size, action_size,vocab_size)
+        self.forward_model = ICM_Forward(
             self.feature_size+action_size, self.hidden_size, self.feature_size)
-        self.model_params = list(self.feature.parameters(
-        ))+list(self.inverse.parameters())+list(self.forward.parameters())
+        
         
 
     def read_config(self):
@@ -624,22 +652,7 @@ class ICM():
         self.lambda_weight = self.config['icm']['lambda']
         self.hidden_size = self.config['icm']['hidden_size']
         self.feature_size = self.config['icm']['state_feature_size']
-
-    def train(self):
-        """
-        Put models into train mode
-        """
-        self.feature.train()
-        self.inverse.train()
-        self.forward.train()
-
-    def eval(self):
-        """
-        Put models into eval mode
-        """
-        self.feature.eval()
-        self.inverse.eval()
-        self.forward.eval()
+        self.use_inverse_model = self.config['icm']['inverse_reward']
 
     def get_feature(self, state):
         """
@@ -647,42 +660,51 @@ class ICM():
         :param state: the state to convert into a feature representation.
         :return : state feature
         """
-        return self.feature(state)
+        return self.feature_model(state)
 
     def get_predicted_action(self, state, next_state):
         """
         Use the inverse model to get the predicted action.
         :param state: the current state.
         :param next_state: the next state.
-        :return : the predicted action.
+        :return : vocab distributions for action, modifier, object
         """
         state_feature = self.get_feature(state)
         next_state_feature = self.get_feature(next_state)
-        return self.inverse(state_feature, next_state_feature)
+        return self.inverse_model(state_feature, next_state_feature)
 
     def get_predicted_state(self, state, action):
         """
+
         TODO: depending on action representation maybe dont detach
+
         Use the forward model to predict the next state's feature representation.
         :param state: the current state.
         :param action: the action performed.
         :return : the feature representation of the predicted next state.
         """
         state_feature = self.get_feature(state)
-        return self.forward(state_feature, action.detach())
+        return self.forward_model(state_feature, action.detach())
 
     def get_inverse_loss(self, state, action, next_state):
         """
-        TODO : decide upon loss to use, generally cross entropy - how will actions be represented
+
+        TODO : decide upon loss to use, generally cross entropy - how will actions be represented. Rather try decode actions and then use cross entropy or simply -log(probabiltiy of action sequence)
+        
         Get the loss of the inverse model.
         :param state: the current state.
         :param action: the action performed.
         :param next_state: the next state after action.
         :return : Inverse models loss
+
         """
-        predicted_action = self.get_predicted_action(state, next_state)
-        action = action.view(len(action),3*len(action[0][0]))
-        return F.mse_loss(action.detach(), predicted_action,reduction='none').mean(dim=-1)
+        predicted_action, predicted_modifier, predicted_object = self.get_predicted_action(state, next_state)
+        
+        action_probs = torch.gather(predicted_action,-1,action)[:,0]
+        modifier_probs = torch.gather(predicted_modifier,-1,action)[:,1]
+        object_probs = torch.gather(predicted_object,-1,action)[:,2]
+        loss = -torch.log(action_probs*modifier_probs*object_probs)
+        return loss
 
     def get_forward_loss(self, state, action, next_state):
         """
@@ -706,16 +728,21 @@ class ICM():
         :return : the intrinsic reward.
         """
         with torch.no_grad():
-            intrinsic_reward = self.scaling_factor * \
-                self.get_forward_loss(state, action, next_state).detach()
+            if not self.use_inverse_model:
+                intrinsic_reward = self.scaling_factor * \
+                    self.get_forward_loss(state, action, next_state).detach()
+            else:
+                intrinsic_reward = self.scaling_factor * \
+                    self.get_inverse_loss(state, action, next_state).detach()
+            
             return intrinsic_reward
 
-    def zero_grad(self):
-        self.forward.zero_grad()
-        self.inverse.zero_grad()
-        self.feature.zero_grad()
 
-    def cuda(self):
-        self.forward.cuda()
-        self.inverse.cuda()
-        self.feature.cuda()
+    def forward(self,state,action,next_state):
+        forward_loss = self.get_forward_loss(state,action,next_state)
+        inverse_loss = self.get_inverse_loss(state,action,next_state)
+
+        return forward_loss,inverse_loss
+
+
+    
