@@ -85,7 +85,7 @@ class Agent:
         self.state = KG.SupplementaryKG()
         params['vocab_size'] = len(self.state.vocab)
         self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        self.knowledge_graph = StateNetwork(action_set = self.state.actions, params=params,  embeddings=self.action_emb.weight)
+        self.GAT = StateNetwork(action_set = self.state.actions, params=params,  embeddings=self.action_emb.weight)
         
 
     def load_config(self):
@@ -392,7 +392,7 @@ class Agent:
         """
         model = self.online_net if use_model == "online" else self.target_net
         match_representation_sequence = self.get_match_representations(input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
-        action_ranks = model.action_scorer(match_representation_sequence, word_masks)  # list of 3 tensors size of vocab
+        action_ranks = model.action_scorer(match_representation_sequence, word_masks, self.GAT.current_out)  # list of 3 tensors size of vocab
         return action_ranks
 
     def choose_maxQ_command(self, action_ranks, word_mask=None):

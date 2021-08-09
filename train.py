@@ -209,12 +209,12 @@ def train(data_path):
             observation_strings_w_history = agent.naozi.get()
             
             agent.state.step(state_strings[0], commands[0])
-
-            print(agent.knowledge_graph(agent.state.graph_state_rep).size())
+            agent.GAT(agent.state.graph_state_rep)
 
             # This gets the observations into their word id forms
             input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
             # We feed these observations along with the question to the agent to produce an action
+            # commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=act_randomly)
             commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=act_randomly)
             # We append each game in the batches commands to a 2d array
             for i in range(batch_size):

@@ -114,7 +114,7 @@ class DQN(torch.nn.Module):
                                                                 n_head=self.n_heads, dropout=self.block_dropout) for _ in range(self.aggregation_layers)])
 
         linear_function = NoisyLinear if self.noisy_net else torch.nn.Linear
-        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim, self.action_scorer_hidden_dim)
+        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim+100, self.action_scorer_hidden_dim)
 
         if self.use_distributional:
             if self.dueling_networks:
@@ -149,12 +149,19 @@ class DQN(torch.nn.Module):
     def get_match_representations(self, doc_encodings, doc_mask, q_encodings, q_mask):
         # node encoding: batch x num_node x hid
         # node mask: batch x num_node
+
+        #Option one: rewrite context_question_attention
+        #Option two: concat doc_encoding and GAT_encoding
+        #Option three: Input GAT into Encoder block
+        #Option four: Create another encoder block that takes output of M0 and concat
+        #Option five: Concat output of GAT with M0
+
         X = self.context_question_attention(doc_encodings, q_encodings, doc_mask, q_mask)
         M0 = self.context_question_attention_resizer(X)
         M0 = F.dropout(M0, p=self.block_dropout, training=self.training)
         square_mask = torch.bmm(doc_mask.unsqueeze(-1), doc_mask.unsqueeze(1))  # batch x time x time
         for i in range(self.aggregation_layers):
-            M0 = self.aggregators[i](M0, doc_mask, square_mask, i * (self.aggregation_conv_num + 2) + 1, self.aggregation_layers)
+            M0 = self.aggregators[i](M0, doc_mask, square_mask, i * (self.aggregation_conv_num + 2) + 1, self.aggregation_layers)      
         return M0
 
     def representation_generator(self, _input_words, _input_chars):
@@ -167,12 +174,17 @@ class DQN(torch.nn.Module):
 
         return encoding_sequence, mask
 
-    def action_scorer(self, state_representation_sequence, word_masks):
+    def action_scorer(self, state_representation_sequence, word_masks, gat_out):
         
         state_representation, _ = torch.max(state_representation_sequence, 1)
+
+        state_representation = torch.cat((state_representation, gat_out.unsqueeze(0)), dim=-1)
+
         hidden = self.action_scorer_shared_linear(state_representation)  # batch x hid
         hidden = torch.relu(hidden)  # batch x hid
     
+        #Option: Concat to Hidden or concat to state_rep
+
         action_ranks = []
         for i in range(self.generate_length):
             a_rank = self.action_scorers[i](hidden)  # batch x n_vocab, or batch x n_vocab*atoms

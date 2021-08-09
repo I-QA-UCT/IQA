@@ -2,7 +2,7 @@ general:
   train_data_size: 1  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
   random_map: True  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
-  question_type: "attribute"  # location, existence, attribute
+  question_type: "location"  # location, existence, attribute
   random_seed: 42  # the secret of deep learning.
   naozi_capacity: 1  # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
   use_cuda: False  # disable this when running on machine without cuda
@@ -10,7 +10,7 @@ general:
 training:
   batch_size: 1
   max_episode: 20000
-  learn_start_from_this_episode: 1000
+  learn_start_from_this_episode: 1
   target_net_update_frequency: 1000  # sync target net with online net per this many epochs
   max_nb_steps_per_episode: 50  # after this many steps, a game is terminated
   qa_loss_lambda: 1.0
