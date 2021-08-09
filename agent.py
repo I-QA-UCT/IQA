@@ -386,13 +386,13 @@ class Agent:
         match_representation_sequence = match_representation_sequence * description_mask.unsqueeze(-1)
         return match_representation_sequence
 
-    def get_ranks(self, input_observation, input_observation_char, input_quest, input_quest_char, word_masks, use_model="online"):
+    def get_ranks(self, input_observation, input_observation_char, input_quest, input_quest_char, word_masks, gat_out, use_model="online"):
         """
         Given input observation and question tensors, to get Q values of words.
         """
         model = self.online_net if use_model == "online" else self.target_net
         match_representation_sequence = self.get_match_representations(input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
-        action_ranks = model.action_scorer(match_representation_sequence, word_masks, self.GAT.current_out)  # list of 3 tensors size of vocab
+        action_ranks = model.action_scorer(match_representation_sequence, word_masks, gat_out)  # list of 3 tensors size of vocab
         return action_ranks
 
     def choose_maxQ_command(self, action_ranks, word_mask=None):
@@ -464,7 +464,7 @@ class Agent:
         else:
             return " ".join([self.word_vocab[verb], self.word_vocab[adj], self.word_vocab[noun]])
 
-    def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words):
+    def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands):
         """
         choose and action randomly
         """
@@ -473,6 +473,8 @@ class Agent:
             word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
             chosen_indices = word_indices_random
             chosen_strings = self.get_chosen_strings(chosen_indices)
+
+            self.state.step(self.get_state_strings(infos)[0], commands[0])
 
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
@@ -489,7 +491,7 @@ class Agent:
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
 
-    def act_greedy(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words):
+    def act_greedy(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
@@ -499,9 +501,12 @@ class Agent:
             local_word_masks_np = self.get_local_word_masks(possible_words)
             local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
     
+            self.state.step(self.get_state_strings(infos)[0], commands[0])
+            gat_out = self.GAT(self.state.graph_state_rep)
+
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
-            action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+            action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
             chosen_indices = word_indices_maxq
             chosen_strings = self.get_chosen_strings(chosen_indices)
@@ -521,7 +526,7 @@ class Agent:
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
 
-    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False):
+    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands, random=False):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
@@ -537,11 +542,13 @@ class Agent:
         :return chosen_strings: the list of commands for each game in batch.
         :return replay_info: contains the chosen word indices in vocab of commands generated and whether or not agents in the batch are still interacting.
         """
+
+
         with torch.no_grad():
             if self.mode == "eval":
-                return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands)
             if random:
-                return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands)
             batch_size = len(obs)
 
             local_word_masks_np = self.get_local_word_masks(possible_words)
@@ -549,7 +556,11 @@ class Agent:
     
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
-            action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab
+
+            self.state.step(self.get_state_strings(infos)[0], commands[0])
+            gat_out = self.GAT(self.state.graph_state_rep)
+
+            action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
             word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
     
@@ -589,7 +600,13 @@ class Agent:
         if data is None:
             return None
 
-        obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        
+        adj_mat_batch = torch.stack(adj_mat_list)
+        next_adj_mat_batch = torch.stack(next_adj_mat_list)
+        gat_out = self.GAT((None,adj_mat_batch))
+        next_gat_out = self.GAT((None,next_adj_mat_batch))
+        
         batch_size = len(actual_n_list)
 
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
@@ -604,7 +621,8 @@ class Agent:
         local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in self.get_local_word_masks(possible_words)]
         next_local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in self.get_local_word_masks(next_possible_words)]
 
-        action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, use_model="online")  # list of batch x vocab or list of batch x vocab x atoms
+        
+        action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab or list of batch x vocab x atoms
         # ps_a
         word_qvalues = [ez_gather_dim_1(w_rank, idx.unsqueeze(-1)).squeeze(1) for w_rank, idx in zip(action_ranks, chosen_indices)]  # list of batch or list of batch x atoms
         q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch or batch x atoms
@@ -616,17 +634,17 @@ class Agent:
                 self.target_net.reset_noise()  # Sample new target net noise
             if self.double_dqn:
                 # pns Probabilities p(s_t+n, ·; θonline)
-                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, use_model="online")  
+                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, next_gat_out, use_model="online")  
                 # list of batch x vocab or list of batch x vocab x atoms
                 # Perform argmax action selection using online network: argmax_a[(z, p(s_t+n, a; θonline))]
                 next_word_indices = self.choose_maxQ_command(next_action_ranks, next_local_word_masks)  # list of batch x 1
                 # pns # Probabilities p(s_t+n, ·; θtarget)
-                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, use_model="target")  # batch x vocab or list of batch x vocab x atoms
+                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, next_gat_out, use_model="target")  # batch x vocab or list of batch x vocab x atoms
                 # pns_a # Double-Q probabilities p(s_t+n, argmax_a[(z, p(s_t+n, a; θonline))]; θtarget)
                 next_word_qvalues = [ez_gather_dim_1(w_rank, idx.unsqueeze(-1)).squeeze(1) for w_rank, idx in zip(next_action_ranks, next_word_indices)]  # list of batch or list of batch x atoms
             else:
                 # pns Probabilities p(s_t+n, ·; θonline)
-                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, use_model="target")  
+                next_action_ranks = self.get_ranks(next_input_observation, next_input_observation_char, input_quest, input_quest_char, next_local_word_masks, next_gat_out, use_model="target")  
                 # list of batch x vocab or list of batch x vocab x atoms
                 next_word_indices = self.choose_maxQ_command(next_action_ranks, next_local_word_masks)  # list of batch x 1
                 next_word_qvalues = [ez_gather_dim_1(w_rank, idx.unsqueeze(-1)).squeeze(1) for w_rank, idx in zip(next_action_ranks, next_word_indices)]  # list of batch or list of batch x atoms

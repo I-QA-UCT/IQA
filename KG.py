@@ -3,6 +3,7 @@ import json
 import requests
 import numpy as np
 from nltk import sent_tokenize, word_tokenize
+import torch
 
 def openIE(sentence):
     url = "http://localhost:9000/"
@@ -122,7 +123,7 @@ class SupplementaryKG(object):
             if 'exit' in sent or 'entranceway' in sent:
                 for dir in directions:
                     if dir in sent:
-                        rules.append((self.room, 'has', 'exit to' + dir)) 
+                        rules.append((self.room, 'has', 'exit to ' + dir)) 
                     if prev_room != "":
                         #Get previous room and previous "you" subgraphs
                         graph_copy = self.graph_state.copy()
@@ -147,7 +148,7 @@ class SupplementaryKG(object):
         
         edges = list(self.graph_state.edges)
 
-        # print("add", add_rules)
+        print("add", add_rules)
 
         #Remove edges from KG that are no longer needed
         for edge in edges:
@@ -167,12 +168,14 @@ class SupplementaryKG(object):
                 if u != 'it' and v != 'it':
                     self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
-        # print("pre", self.graph_state.edges)
+        print("pre", self.graph_state.edges)
 
         if prev_room_subgraph is not None:
             self.graph_state.add_edges_from(prev_room_subgraph.edges)
 
-        # print(self.graph_state.edges)
+        print(self.graph_state.edges)
+
+        print(self.graph_state.size())
 
         return
 
@@ -201,7 +204,7 @@ class SupplementaryKG(object):
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
         self.update_state(visible_state, prev_action)
-        self.graph_state_rep = self.get_state_representation(), self.adj_matrix
+        self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix)#.cuda()
 
 if __name__ == '__main__':
 

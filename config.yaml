@@ -1,7 +1,7 @@
 general:
   train_data_size: 1  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
-  random_map: True  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
+  random_map: False  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"  # location, existence, attribute
   random_seed: 42  # the secret of deep learning.
   naozi_capacity: 1  # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
@@ -9,8 +9,8 @@ general:
 
 training:
   batch_size: 1
-  max_episode: 20000
-  learn_start_from_this_episode: 1
+  max_episode: 100000
+  learn_start_from_this_episode: 100
   target_net_update_frequency: 1000  # sync target net with online net per this many epochs
   max_nb_steps_per_episode: 50  # after this many steps, a game is terminated
   qa_loss_lambda: 1.0
@@ -28,9 +28,9 @@ evaluate:
 checkpoint:
   save_checkpoint: True
   save_frequency: 1000  # episode
-  experiment_tag: 'name_your_current_experiment_here'
+  experiment_tag: 'DQN_Fixed_1_pretrained_embeddings'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: 'your_previous_experiemnt_model'  # if you want to load from prev experiment
+  load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
@@ -48,7 +48,7 @@ distributional:
 
 dueling_networks: False
 
-double_dqn: True
+double_dqn: False
 
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled
@@ -65,9 +65,9 @@ episodic_counting_bonus:
   revisit_counting_lambda_anneal_to: 0.0
 
 model:
-  use_pretrained_embedding: False
+  use_pretrained_embedding: True
   word_embedding_size: 300
-  word_embedding_trainable: True
+  word_embedding_trainable: False
   char_embedding_size: 32
   char_embedding_trainable: True
   embedding_dropout: 0.

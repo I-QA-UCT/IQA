@@ -178,7 +178,7 @@ class DQN(torch.nn.Module):
         
         state_representation, _ = torch.max(state_representation_sequence, 1)
 
-        state_representation = torch.cat((state_representation, gat_out.unsqueeze(0)), dim=-1)
+        state_representation = torch.cat((state_representation, gat_out), dim=-1)
 
         hidden = self.action_scorer_shared_linear(state_representation)  # batch x hid
         hidden = torch.relu(hidden)  # batch x hid
@@ -309,8 +309,6 @@ class StateNetwork(torch.nn.Module):
             embeddings[i, :] = cur_embeds
         self.state_ent_emb = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
 
-
-
     def load_files(self):
         entities = {}
 
@@ -331,7 +329,10 @@ class StateNetwork(torch.nn.Module):
 
     def forward(self, graph_rep):
         _, adj = graph_rep
-        adj = torch.IntTensor(adj)#.cuda()
-        x = self.GAT(self.state_ent_emb.weight,adj).view(-1)
+        # adj = torch.IntTensor(adj)#.cuda()
+        if len(adj.size()) == 2:
+            adj = adj.unsqueeze(0)
+        batch_size = len(adj)
+        x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
         out = self.fc1(x)
         return out

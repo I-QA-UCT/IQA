@@ -207,20 +207,19 @@ def train(data_path):
 
             # This will always be the current observation string since we set history size to one
             observation_strings_w_history = agent.naozi.get()
-            
-            agent.state.step(state_strings[0], commands[0])
-            agent.GAT(agent.state.graph_state_rep)
 
             # This gets the observations into their word id forms
             input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
             # We feed these observations along with the question to the agent to produce an action
             # commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=act_randomly)
-            commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=act_randomly)
+            commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands, random=act_randomly)
             # We append each game in the batches commands to a 2d array
             for i in range(batch_size):
                 commands_per_step[i].append(commands[i])
 
-            replay_info = [observation_strings_w_history, questions, possible_words] + replay_info
+
+            _, adj_mat = agent.state.graph_state_rep
+            replay_info = [adj_mat, observation_strings_w_history, questions, possible_words] + replay_info
             # get the real admissible commands from environment i.e the true valid commands for the game step
             admissible_commands = [set(item) - set(["look", "wait", "inventory"]) for item in infos["admissible_commands"]]
             # get valid command reward 
@@ -336,11 +335,11 @@ def train(data_path):
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
-                batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                batch_adj_mat, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
-                agent.command_generation_replay_memory.push(is_prior, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                agent.command_generation_replay_memory.push(is_prior, batch_adj_mat, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
 
