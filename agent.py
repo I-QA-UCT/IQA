@@ -741,10 +741,15 @@ class Agent:
             action_inputs = torch.stack(enc_action_list)
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
-
-            forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask
-            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
+            
+            if self.curiosity_module.beta==0:
+                icm_loss = (self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask).mean()
+            elif self.curiosity_module.beta==1:
+                icm_loss = (self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask).mean()
+            else:
+                inverse_loss = (self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask).mean()
+                forward_loss = (self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask).mean()
+                icm_loss = (1-self.curiosity_module.beta)*inverse_loss+self.curiosity_module.beta*forward_loss
                   
             
                 
