@@ -51,10 +51,15 @@ class Agent:
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
         
         params = self.config['gat']
-        self.state = KG.SupplementaryKG()
+        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'])
         params['vocab_size'] = len(self.state.vocab)
+        params['use_cuda'] = self.config['general']['use_cuda']
+
         self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        self.GAT = StateNetwork(action_set = self.state.actions, params=params,  embeddings=self.action_emb.weight)
+        self.GAT = StateNetwork(params=params,  embeddings=self.action_emb.weight)        
+        
+        # self.GAT = StateNetwork(action_set = self.state.actions, params=params,  embeddings=self.action_emb.weight)
+
         
 
     def load_config(self):

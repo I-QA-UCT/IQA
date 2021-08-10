@@ -16,7 +16,7 @@ def openIE(sentence):
 
 class SupplementaryKG(object):
 
-    def __init__(self):
+    def __init__(self, use_cuda):
     
         self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
@@ -25,6 +25,8 @@ class SupplementaryKG(object):
         self.graph_state = nx.DiGraph()
         self.adj_matrix = np.zeros((len(self.vocab_er['entity']), len(self.vocab_er['entity']))) #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
         self.graph_state_rep = []  #Representation attention between entities 
+
+        self.use_cuda = use_cuda
 
     def load_files(self):
         vocab = {}
@@ -202,7 +204,10 @@ class SupplementaryKG(object):
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
         self.update_state(visible_state, prev_action)
-        self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix)#.cuda()
+        if self.use_cuda:
+            self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix).cuda()
+        else:
+            self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix)
 
 if __name__ == '__main__':
 

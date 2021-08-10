@@ -275,10 +275,13 @@ class GAT(torch.nn.Module):
         return x    
 
 class StateNetwork(torch.nn.Module):
-    def __init__(self, action_set, params, embeddings=None):
+    # def __init__(self, action_set, params, embeddings=None):
+    def __init__(self, params, embeddings=None):
         super(StateNetwork,self).__init__()
         self.params = params
-        self.action_set = action_set
+        # self.action_set = action_set
+        self.use_cuda = params['use_cuda']
+
 
         self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=3, num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=1)
         if params['qa_init']:
@@ -303,7 +306,12 @@ class StateNetwork(torch.nn.Module):
                         graph_node_ids.append(1)
                 else:
                     graph_node_ids.append(1)
-            graph_node_ids = torch.LongTensor(graph_node_ids)#.cuda()
+
+            if self.use_cuda:
+                graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
+            else:
+                graph_node_ids = torch.LongTensor(graph_node_ids)
+
             cur_embeds = self.pretrained_embeds(graph_node_ids)
 
             cur_embeds = cur_embeds.mean(dim=0)
@@ -330,7 +338,6 @@ class StateNetwork(torch.nn.Module):
 
     def forward(self, graph_rep):
         _, adj = graph_rep
-        # adj = torch.IntTensor(adj)#.cuda()
         if len(adj.size()) == 2:
             adj = adj.unsqueeze(0)
         batch_size = len(adj)
