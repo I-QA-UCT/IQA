@@ -31,8 +31,8 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_location_10_pretrained'
-  load_pretrained: False               # during test, enable this so that the agent load your pretrained model
+  experiment_tag: 'a2c_location_10_icm_inverse_only_no_feature_net'
+  load_pretrained: True               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
@@ -58,6 +58,7 @@ dueling_networks: False
 # use DDQN
 double_dqn: False
 
+
 # Actor Critic Settings
 a2c:
   enable: True
@@ -65,14 +66,15 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: False
+  enable: True
   scaling_factor: 0.05
   beta: 0
   lambda: 1
   hidden_size: 128
-  state_feature_size: 64
+  state_feature_size: 128
   inverse_reward: True
   use_intrinsic_reward: False
+  use_feature_net : False
 
 
 epsilon_greedy:

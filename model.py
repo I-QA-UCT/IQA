@@ -633,13 +633,18 @@ class ICM(torch.nn.Module):
         super(ICM, self).__init__()
         self.config = config
         self.read_config()
-
-        self.feature_model = ICM_Feature(
+        
+        if not self.use_feature_net:
+            feature_size = state_input_size
+        else:
+            feature_size = self.feature_size
+            self.feature_model = ICM_Feature(
             state_input_size, self.hidden_size, self.feature_size)
+
         self.inverse_model = ICM_Inverse(
-            self.feature_size*2, self.hidden_size, action_size,vocab_size)
+            feature_size*2, self.hidden_size, action_size,vocab_size)
         self.forward_model = ICM_Forward(
-            self.feature_size+action_size, self.hidden_size, self.feature_size)
+            feature_size+action_size, self.hidden_size, feature_size)
         
         
 
@@ -653,6 +658,7 @@ class ICM(torch.nn.Module):
         self.hidden_size = self.config['icm']['hidden_size']
         self.feature_size = self.config['icm']['state_feature_size']
         self.use_inverse_model = self.config['icm']['inverse_reward']
+        self.use_feature_net = self.config['icm']['use_feature_net']
 
     def get_feature(self, state):
         """
@@ -670,12 +676,13 @@ class ICM(torch.nn.Module):
         :return : vocab distributions for action, modifier, object
         """
         # Using Feature Net
-        # state_feature = self.get_feature(state)
-        # next_state_feature = self.get_feature(next_state)
-
-        # Using last val of transformer
-        state_feature, _ = torch.max(state, 1)
-        next_state_feature,_ = torch.max(next_state, 1)
+        if self.use_feature_net:
+            state_feature = self.get_feature(state)
+            next_state_feature = self.get_feature(next_state)
+        else:
+            # Using max pooling of transformer layers
+            state_feature, _ = torch.max(state, 1)
+            next_state_feature,_ = torch.max(next_state, 1)
 
         return self.inverse_model(state_feature, next_state_feature)
 
@@ -689,8 +696,14 @@ class ICM(torch.nn.Module):
         :param action: the action performed.
         :return : the feature representation of the predicted next state.
         """
-        state_feature = self.get_feature(state)
-        return self.forward_model(state_feature, action.detach())
+        # Using FeatureNet
+        if self.use_feature_net:
+            state_feature = self.get_feature(state)
+        else:
+            # Using max pooling of transformer layers
+            state_feature, _ = torch.max(state, 1)
+
+        return self.forward_model(state_feature, action)
 
     def get_inverse_loss(self, state, action, next_state):
         """
@@ -721,7 +734,7 @@ class ICM(torch.nn.Module):
         :return : MSE loss of the forward model.
         """
         next_state_feature = self.get_feature(next_state)
-        predicted_state_feature = self.get_predicted_state(state, action.detach())
+        predicted_state_feature = self.get_predicted_state(state, action)
         
         return F.mse_loss(predicted_state_feature, next_state_feature,reduction='none').mean(dim=-1)
 
