@@ -669,8 +669,14 @@ class ICM(torch.nn.Module):
         :param next_state: the next state.
         :return : vocab distributions for action, modifier, object
         """
-        state_feature = self.get_feature(state)
-        next_state_feature = self.get_feature(next_state)
+        # Using Feature Net
+        # state_feature = self.get_feature(state)
+        # next_state_feature = self.get_feature(next_state)
+
+        # Using last val of transformer
+        state_feature, _ = torch.max(state, 1)
+        next_state_feature,_ = torch.max(next_state, 1)
+
         return self.inverse_model(state_feature, next_state_feature)
 
     def get_predicted_state(self, state, action):

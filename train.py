@@ -442,13 +442,13 @@ def train(data_path,log_to_wandb):
                     is_final = False
                 if agent.a2c:
                     if not agent.icm:
-                        agent.command_generation_replay_memory.push(None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+                        agent.command_generation_replay_memory.push(None,None,None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
                     else:
                         agent.command_generation_replay_memory.push(prev_state_input[b],prev_state_char[b],action_input[b],state_input[b],state_char[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
               
                 else:
                     if not agent.icm:
-                        agent.command_generation_replay_memory.push(is_prior,None,None,None, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                        agent.command_generation_replay_memory.push(is_prior,None,None,None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                     else:
                         agent.command_generation_replay_memory.push(is_prior,prev_state_input[b],prev_state_char[b],action_input[b],state_input[b],state_char[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:

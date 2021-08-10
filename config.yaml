@@ -1,6 +1,6 @@
 # General Settings
 general:
-  train_data_size: 500                #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 10                #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
   random_map: True                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"           # location, existence, attribute
@@ -31,7 +31,7 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_location_500_icm_inverse_only'
+  experiment_tag: 'a2c_location_10_pretrained'
   load_pretrained: False               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
@@ -65,14 +65,14 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
-  scaling_factor: 1
-  beta: 0.0
+  enable: False
+  scaling_factor: 0.05
+  beta: 0
   lambda: 1
   hidden_size: 128
-  state_feature_size: 128
+  state_feature_size: 64
   inverse_reward: True
-  use_intrinsic_reward: True
+  use_intrinsic_reward: False
 
 
 epsilon_greedy:
