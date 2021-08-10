@@ -28,13 +28,13 @@ evaluate:
 checkpoint:
   save_checkpoint: True
   save_frequency: 1000  # episode
-  experiment_tag: 'DQN_Fixed_1_pretrained_embeddings'
+  experiment_tag: 'DQN_Fixed_1_pretrained_embeddings_2'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
-  replay_memory_capacity: 500000  # adjust this depending on your RAM size
+  replay_memory_capacity: 150000  # adjust this depending on your RAM size
   replay_memory_priority_fraction: 0.5
   update_per_k_game_steps: 20
   replay_batch_size: 64
@@ -81,3 +81,12 @@ model:
   block_dropout: 0.
   action_scorer_hidden_dim: 64
   question_answerer_hidden_dim: 64
+
+gat:
+  embedding_size: 50
+  dropout_ratio: 0.2
+  gat_emb_size: 50
+  qa_init: True
+  vocab_size: None
+  alpha: 0.2
+  gat_out_size: 100

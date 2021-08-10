@@ -59,6 +59,7 @@ class DQN(torch.nn.Module):
         self.aggregation_layers = model_config['aggregation_layers']
         self.aggregation_conv_num = model_config['aggregation_conv_num']
         self.block_hidden_dim = model_config['block_hidden_dim']
+        self.gat_out_dim = self.config['gat']['gat_out_size']
         self.n_heads = model_config['n_heads']
         self.block_dropout = model_config['block_dropout']
         self.attention_dropout = model_config['attention_dropout']
@@ -114,7 +115,7 @@ class DQN(torch.nn.Module):
                                                                 n_head=self.n_heads, dropout=self.block_dropout) for _ in range(self.aggregation_layers)])
 
         linear_function = NoisyLinear if self.noisy_net else torch.nn.Linear
-        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim+100, self.action_scorer_hidden_dim)
+        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim+self.gat_out_dim, self.action_scorer_hidden_dim)
 
         if self.use_distributional:
             if self.dueling_networks:
@@ -279,7 +280,7 @@ class StateNetwork(torch.nn.Module):
         self.params = params
         self.action_set = action_set
 
-        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=3, num_class=len(action_set), dropout=params['dropout_ratio'], alpha=0.2, num_heads=1)
+        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=3, num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=1)
         if params['qa_init']:
             self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
         else:

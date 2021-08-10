@@ -175,8 +175,6 @@ class SupplementaryKG(object):
         if prev_room_subgraph is not None:
             self.graph_state.add_edges_from(prev_room_subgraph.edges)
 
-        # print(self.graph_state.edges)
-
         return
 
     def get_state_representation(self):
