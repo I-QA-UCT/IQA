@@ -61,7 +61,8 @@ def evaluate(data_path, agent,variant):
             resid_pdrop=config['dropout'],
             attn_pdrop=config['dropout'],
         )
-    model.load_state_dict(torch.load(f"{variant['model_dir']}/{variant['model']}.pt"))
+
+    model.load_state_dict(torch.load(f"{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu')))
     model.eval()
 
     with open(eval_data_path) as f:

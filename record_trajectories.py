@@ -469,13 +469,16 @@ if __name__ == '__main__':
     parser.add_argument("--offline_rl_type","-rl",
                     default="random_rollouts",
                     help="The type of offline RL being recorded.")
+    # parser.add_argument("--experiment_id","-id",
+    #                 default="random_rollouts",
+    #                 help="Experiment ID.")
     parser.add_argument("--data_out_path","-out",
                     default="./decision_transformer/data",
                     help="Output path of recorded trajectories.")
 
-    parser.add_argument("--actions","-act",
-                    default="dqn",
-                    help="Actions are determined by this.")
+    # parser.add_argument("--actions","-act",
+    #                 default="dqn",
+    #                 help="Actions are determined by this.")
                                            
     args = parser.parse_args()
 
