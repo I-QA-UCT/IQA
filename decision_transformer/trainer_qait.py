@@ -65,7 +65,8 @@ class JsonDataset(Dataset):
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
                 
                 trajectory["mask"] = episode["mask"]
-                
+                trajectory["answer"] = [word_encodings[episode["answer"]]]*len(episode["steps"])
+
                 for game_step in episode["steps"]:
 
                     # Get the action, modifier, object triple 
@@ -82,8 +83,8 @@ class JsonDataset(Dataset):
                     reward -= game_step["reward"]
 
                     trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
-                     "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]] })
-                
+                     "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
+
                 trajectories.append(trajectory)
 
         return trajectories
@@ -146,7 +147,7 @@ class Trainer:
         states, actions, rewards, attention_mask, returns = self.get_batch(self.batch_size)
         state_target, action_target, reward_target = torch.clone(states), torch.clone(actions), torch.clone(rewards)
 
-        state_preds, action_preds, reward_preds = self.model.forward(
+        state_preds, action_preds, reward_preds, answer_pred = self.model.forward(
             states, actions, rewards, masks=None, attention_mask=attention_mask, target_return=returns,
         )
 
@@ -164,14 +165,16 @@ class Trainer:
 class SequenceTrainer(Trainer):
 
     def train_step(self):
-        states, actions, rewards, rtg, timesteps, attention_mask = self.get_batch(self.batch_size)
+        states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, game_mask = self.get_batch(self.batch_size)
         command_target = torch.clone(actions)
-        
-        
+
         action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(command_target.shape[-1])]
 
-        action_preds,modifier_preds,object_preds = self.model.forward(
+        action_preds,modifier_preds,object_preds,answer_preds = self.model.forward(
             states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
+        
+        #answer_pred = torch.argmax(answer_pred,dim=-1)
+        # answer_pred = answer_pred*game_mask
 
         vocab_size = action_preds.shape[2]
 
@@ -184,7 +187,10 @@ class SequenceTrainer(Trainer):
         object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
         object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-        loss = self.loss_fn(action_preds,action_target) + self.loss_fn(modifier_preds,modifier_target) + self.loss_fn(object_preds,object_target)
+        answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
+
+        loss = self.loss_fn(action_preds,action_target) + self.loss_fn(modifier_preds,modifier_target) + self.loss_fn(object_preds,object_target) + self.loss_fn(answer_preds,answer_targets)
 
         self.optimizer.zero_grad()
         loss.backward()

@@ -133,7 +133,7 @@ def evaluate(data_path, agent,variant):
 
                 # Batch size of 1 for now
                 if decision_transformer:
-                    commands, replay_info = agent.act_decision_transformer(commands_per_step,[step_no]*batch_size,obs, observation_strings_w_history,questions,counting_rewards,model=model)
+                    commands, replay_info, answer = agent.act_decision_transformer(commands_per_step,[step_no]*batch_size,obs, observation_strings_w_history,questions,counting_rewards,model=model)
                 else:
                     commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
 
@@ -158,9 +158,12 @@ def evaluate(data_path, agent,variant):
             answerer_input = agent.naozi.get()
             answerer_input_observation, answerer_input_observation_char, answerer_observation_ids =  agent.get_agent_inputs(answerer_input)
 
-            chosen_word_indices = agent.answer_question_act_greedy(answerer_input_observation, answerer_input_observation_char, answerer_observation_ids, input_quest, input_quest_char)  # batch
-            chosen_word_indices_np = generic.to_np(chosen_word_indices)
-            chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
+            if decision_transformer:
+                chosen_answers = [agent.word_vocab[answer.cpu().item()]]
+            else:
+                chosen_word_indices = agent.answer_question_act_greedy(answerer_input_observation, answerer_input_observation_char, answerer_observation_ids, input_quest, input_quest_char)  # batch
+                chosen_word_indices_np = generic.to_np(chosen_word_indices)
+                chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
 
             # rewards
             # qa reward

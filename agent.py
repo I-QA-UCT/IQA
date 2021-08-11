@@ -526,8 +526,9 @@ class Agent:
             chosen_strings = []
 
             for i in range(batch_size):
-                command = model.get_command(pad_input(input_observation[i],questions[i],170),command_to_id(commands_per_step[i][-1]),returns_to_go[i],timesteps)
-                word_indices_dt = list(command)
+                act,obj,mod,answer = model.get_command(pad_input(input_observation[i],questions[i],150),command_to_id(commands_per_step[i][-1]),returns_to_go[i],timesteps)
+
+                word_indices_dt = [act,obj,mod]
                 chosen_indices.append(word_indices_dt)
             
             chosen_indices = torch.Tensor(chosen_indices).long()
@@ -547,7 +548,7 @@ class Agent:
 
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
-            return chosen_strings, replay_info
+            return chosen_strings, replay_info, answer
 
 
     def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False,decision_transformer=False):

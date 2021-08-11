@@ -39,14 +39,14 @@ def experiment(
     group_name = f'{exp_prefix}-{env_name}-{dataset}'
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
 
-    valid_env_names = set(['random_rollout','dqn_loc'])
+    # valid_env_names = set(['random_rollout','dqn_loc'])
 
-    if env_name in valid_env_names:
-        max_ep_len = 50
-        env_targets = [3600, 1800]  # evaluation conditioning targets
-        scale = 10.  # normalization for rewards/returns
-    else:
-        raise NotImplementedError
+    # if env_name in valid_env_names:
+    max_ep_len = 50
+    env_targets = [3600, 1800]  # evaluation conditioning targets
+    scale = 10.  # normalization for rewards/returns
+    # else:
+    #     raise NotImplementedError
 
     act_dim = 3 # act, mod, obj
     state_dim = variant["sentence_tensor_length"] # Number of tokens in the state string
@@ -61,7 +61,7 @@ def experiment(
 
     # save all path information into separate lists
     mode = "normal"
-    states, traj_lens, returns = [], [], []
+    states, traj_lens, returns,answers = [], [], [], []
     for path in trajectories:
         states.append(path['observations'])
         traj_lens.append(len(path['observations']))
@@ -109,7 +109,7 @@ def experiment(
             p=p_sample,  # reweights so we sample according to timesteps
         )
 
-        s, a, r, rtg, timesteps, mask = [], [], [], [], [], []
+        s, a, r, rtg, timesteps, mask, ans, game_mask = [], [], [], [], [], [], [], []
         for i in range(batch_size):
 
             traj = trajectories[int(sorted_inds[batch_inds[i]])]
@@ -119,6 +119,10 @@ def experiment(
             s.append(traj['observations'][si:si + max_len].reshape(1, -1, state_dim))
             a.append(traj['actions'][si:si + max_len].reshape(1, -1, act_dim))
             r.append(traj['rewards'][si:si + max_len].reshape(1, -1, 1))
+
+            ans.append(traj['answer'][si:si + max_len].reshape(1, -1, 1))
+
+            game_mask.append(traj['mask'][si:si + max_len].reshape(1, -1))
 
             timesteps.append(np.arange(si, si + s[-1].shape[1]).reshape(1, -1))
             timesteps[-1][timesteps[-1] >= max_ep_len] = max_ep_len-1  # padding cutoff
@@ -133,19 +137,22 @@ def experiment(
             # s[-1] = (s[-1] - state_mean) / state_std
             a[-1] = np.concatenate([np.ones((1, max_len - tlen, act_dim)), a[-1]], axis=1)
             r[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), r[-1]], axis=1)
+            ans[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), ans[-1]], axis=1)
             rtg[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), rtg[-1]], axis=1) / scale
             timesteps[-1] = np.concatenate([np.zeros((1, max_len - tlen)), timesteps[-1]], axis=1)
             # Add in masks from trajectory object?
             mask.append(np.concatenate([np.zeros((1, max_len - tlen)), np.ones((1, tlen))], axis=1))
-
+            game_mask[-1] = np.concatenate([np.zeros((1, max_len - tlen)), game_mask[-1]], axis=1)
+        
         s = torch.from_numpy(np.concatenate(s, axis=0)).to(dtype=torch.long, device=device)
         a = torch.from_numpy(np.concatenate(a, axis=0)).to(dtype=torch.long, device=device)
         r = torch.from_numpy(np.concatenate(r, axis=0)).to(dtype=torch.float32, device=device)
         rtg = torch.from_numpy(np.concatenate(rtg, axis=0)).to(dtype=torch.float32, device=device)
         timesteps = torch.from_numpy(np.concatenate(timesteps, axis=0)).to(dtype=torch.long, device=device)
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(device=device)
-
-        return s, a, r, rtg, timesteps, mask
+        ans = torch.from_numpy(np.concatenate(ans, axis=0)).to(dtype=torch.long, device=device)
+        game_mask = torch.from_numpy(np.concatenate(game_mask, axis=0)).to(dtype=torch.long, device=device)
+        return s, a, r, rtg, timesteps, mask, ans, game_mask
 
     def eval_episodes(target_rew):
         def fn(model):

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from transformers import GPT2Config
-from decision_transformer.trajectory_gpt2 import GPT2Model
+from trajectory_gpt2 import GPT2Model
 
 from collections import defaultdict
 
@@ -54,9 +54,13 @@ class DecisionTransformer(nn.Module):
         # Single GRU for action and state
         self.encoder = torch.nn.GRU(hidden_size,hidden_size,batch_first=True)
 
-       
+
         self.embed_ln = nn.LayerNorm(hidden_size)
         
+        self.predict_answer = nn.Sequential(
+            *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
+        )
+
         self.predict_action = nn.Sequential(
             *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
         )
@@ -141,9 +145,9 @@ class DecisionTransformer(nn.Module):
         action_preds = self.predict_action(x[:,1])  # predict next action given state
         modifier_preds = self.predict_modifer(x[:,1])  # predict next action given state
         object_preds = self.predict_object(x[:,1])  # predict next action given state
+        answer_pred = self.predict_answer(x[:,1]) # predict answer
 
-
-        return action_preds, modifier_preds,object_preds
+        return action_preds, modifier_preds, object_preds, answer_pred
 
     def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
         
@@ -180,10 +184,10 @@ class DecisionTransformer(nn.Module):
         else:
             attention_mask = None
 
-        action_preds, modifier_preds, object_preds = self.forward(
+        action_preds, modifier_preds, object_preds, answer_pred = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
 
-        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1])
+        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1]), torch.argmax(answer_pred[0,-1])
 
 class Trajectory(object):
 
