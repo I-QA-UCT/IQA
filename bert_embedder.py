@@ -47,7 +47,7 @@ class BertEmbedder(nn.Module):
 
     def embed(self, string):
         encoding = self.tokenizer(string, return_tensors="pt")
-        input_ids = encoding["input_ids"].to(dev())
+        input_ids = encoding["input_ids"]#.cuda()
         # print("in ids:", input_ids.size())
 
         if input_ids.size(-1) > 512:
@@ -73,5 +73,3 @@ def num_params(model):
 
 if __name__ == "__main__":
     embedder = BertEmbedder("mini", [])
-    embedder.embed("hello world . I am Groot!")
-    # embedder.embed(["hello world . I am Groot!", "yoyoyo"])
