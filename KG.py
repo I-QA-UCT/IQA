@@ -4,6 +4,7 @@ import requests
 import numpy as np
 from nltk import sent_tokenize, word_tokenize
 import torch
+import matplotlib.pyplot as plt
 
 def openIE(sentence):
     url = "http://localhost:9000/"
@@ -27,6 +28,8 @@ class SupplementaryKG(object):
         self.graph_state_rep = []  #Representation attention between entities 
 
         self.use_cuda = use_cuda
+        self.visualize_bedroom = True
+        self.visualize_corridor = True
 
     def load_files(self):
         vocab = {}
@@ -53,16 +56,25 @@ class SupplementaryKG(object):
         
         return vocab, actions, entity_relation_dict
 
+    def visualize(self):
+        pos = nx.spring_layout(self.graph_state)
+        edge_labels = {e: self.graph_state.edges[e]['rel'] for e in self.graph_state.edges}
+        nx.draw_networkx_edge_labels(self.graph_state, pos, edge_labels)
+        nx.draw(self.graph_state, pos=pos, with_labels=True, node_size=200, font_size=10)
+        plt.show()
+
     def update_state(self, visible_state, prev_action=None):
-       
+
+        # print(prev_action)
+        # if prev_action == 'restart':
+        #     self.graph_state.clear()
+
         #Format visible state, and set to self
         visible_state = visible_state.split('-')
         if len(visible_state) > 1:
             visible_state = visible_state[2]
         self.visible_state = str(visible_state)
         
-        
-
         rules = []
         try:
             #Run visible state through Standford OpenIE and extract triple into list of rules
@@ -116,10 +128,8 @@ class SupplementaryKG(object):
             for dir in directions:
                 if dir in prev_action and self.room != "":
                     add_rules.append((prev_room, dir + ' of', room))
-        
         prev_room_subgraph = None
         prev_you_subgraph = None
-
 
         for sent in sent_tokenize(self.visible_state):
             if 'exit' in sent or 'entranceway' in sent:
@@ -153,6 +163,8 @@ class SupplementaryKG(object):
         edges = list(self.graph_state.edges)
 
         # print("add", add_rules)
+
+        
 
         #Remove edges from KG that are no longer needed
         for edge in edges:
@@ -203,11 +215,11 @@ class SupplementaryKG(object):
 
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
-        self.update_state(visible_state, prev_action)
+        self.update_state(visible_state, prev_action)        
         if self.use_cuda:
-            self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix).cuda()
+            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
         else:
-            self.graph_state_rep = self.get_state_representation(),  torch.IntTensor(self.adj_matrix)
+            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix)
 
 if __name__ == '__main__':
 
