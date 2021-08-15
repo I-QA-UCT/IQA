@@ -17,7 +17,7 @@ def openIE(sentence):
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_cuda):
+    def __init__(self, use_cuda, use_bert):
     
         self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
@@ -28,8 +28,10 @@ class SupplementaryKG(object):
         self.graph_state_rep = []  #Representation attention between entities 
 
         self.use_cuda = use_cuda
-        self.visualize_bedroom = True
-        self.visualize_corridor = True
+        self.use_bert = use_bert
+        self.entities = {}
+        self.entity_nums = 0
+
 
     def load_files(self):
         vocab = {}
@@ -177,12 +179,27 @@ class SupplementaryKG(object):
             self.graph_state.remove_edges_from(prev_you_subgraph.edges)
         
         #Update KG to include new edges and nodes
-        for rule in add_rules:
-            u = '_'.join(str(rule[0]).split())
-            v = '_'.join(str(rule[2]).split())
-            if u in self.vocab_er['entity'].keys() and v in self.vocab_er['entity'].keys():
+        if self.use_bert:
+           for rule in add_rules:
+                u = '_'.join(str(rule[0]).split())
+                v = '_'.join(str(rule[2]).split())
+                if u not in self.entities.keys():
+                    self.entities[u] = self.entity_nums
+                    self.entity_nums = self.entity_nums+1
+
+                if v not in self.entities.keys():
+                    self.entities[v] = self.entity_nums
+                    self.entity_nums = self.entity_nums+1
+                
                 if u != 'it' and v != 'it':
-                    self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
+                        self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
+        else:
+            for rule in add_rules:
+                u = '_'.join(str(rule[0]).split())
+                v = '_'.join(str(rule[2]).split())
+                if u in self.vocab_er['entity'].keys() and v in self.vocab_er['entity'].keys():
+                    if u != 'it' and v != 'it':
+                        self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
         # print("pre", self.graph_state.edges)
 
@@ -192,24 +209,44 @@ class SupplementaryKG(object):
         return
 
     def get_state_representation(self):
-
+        
         result = []
-        self.adj_matrix = np.zeros((len(self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
+        
+        if self.use_bert:
 
-        for source, target in self.graph_state.edges:
-            source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
-            target = '_'.join(str(target).split())
+            self.adj_matrix = np.zeros((len(
+                self.entities.keys()), len(self.entities.keys())))
 
-            #Ignore words not in discovered by agent in entity_relation_collection.py
-            if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
-                break
+            for source, target in self.graph_state.edges:
 
-            source_id = self.vocab_er['entity'][source]    
-            target_id = self.vocab_er['entity'][target]      
-            self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
+                source = '_'.join(str(source).split()) #Make source and target nodes look the same OpenIe entities
+                target = '_'.join(str(target).split())
 
-            result.append(self.vocab_er['entity'][source])
-            result.append(self.vocab_er['entity'][target])
+                source_id = self.entities[source]    
+                target_id = self.entities[target]        
+                self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
+
+                result.append(self.entities[source])
+                result.append(self.entities[target])
+
+        else:
+            self.adj_matrix = np.zeros((len(
+                self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
+
+            for source, target in self.graph_state.edges:
+                source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
+                target = '_'.join(str(target).split())
+
+                #Ignore words not in discovered by agent in entity_relation_collection.py
+                if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
+                    break
+
+                source_id = self.vocab_er['entity'][source]    
+                target_id = self.vocab_er['entity'][target]      
+                self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
+
+                result.append(self.vocab_er['entity'][source])
+                result.append(self.vocab_er['entity'][target])
 
         return list(set(result))
 

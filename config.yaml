@@ -90,3 +90,4 @@ gat:
   vocab_size: None
   alpha: 0.2
   gat_out_size: 100
+  use_bert: False

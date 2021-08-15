@@ -51,7 +51,7 @@ class Agent:
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
         
         params = self.config['gat']
-        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'])
+        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'],self.config['gat']['use_bert'])
         params['vocab_size'] = len(self.state.vocab)
         params['use_cuda'] = self.config['general']['use_cuda']
 
