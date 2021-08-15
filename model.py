@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from layers import Embedding, GATlayer, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear
+from bert_embedder import BertEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,7 @@ class GAT(torch.nn.Module):
         super(GAT, self).__init__()
         self.dropout = dropout
 
-        self.attentions = [GATlayer(num_features, num_hidden, dropout,alpha,concat=False) for i in range (num_heads)]
+        self.attentions = [GATlayer(num_features, num_hidden, dropout, alpha, concat=False) for i in range (num_heads)]
 
         for i, attention in enumerate(self.attentions):
             self.add_module('attention_{}'.format(i), attention)
@@ -281,17 +282,42 @@ class StateNetwork(torch.nn.Module):
         self.params = params
         # self.action_set = action_set
         self.use_cuda = params['use_cuda']
+        self.use_bert = params['use_bert']
 
-
-        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=3, num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=1)
-        if params['qa_init']:
-            self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
+        
+        if self.use_bert:
+            self.bert = BertEmbedder("mini", [])
+            self.vocab_kge, self.vocab = self.load_files()
+            self.state_ent_emb = None
+            self.embeds = []
         else:
-            self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
+            if params['qa_init']:
+                self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+            else:
+                self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
+            self.vocab_kge, self.vocab = self.load_files()
+            self.init_state_ent_emb()
+            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, 100) #TODO:Dynamic sizing here
 
-        self.vocab_kge, self.vocab = self.load_files()
-        self.init_state_ent_emb()
-        self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * 3 * 1, 100)
+    def state_ent_emb_bert(self, entities):
+
+        num_current = len(self.embeds)
+        for i in range(num_current, len(entities)):
+            graph_node_text = self.entities[i].split('_') #Text in OpenIE extractioned entities
+
+            # graph_embedding = self.bert.embed(graph_node_text) #TODO: Why not? Check returned size
+
+            # node_embeddings = []
+            # for w in graph_node_text:
+            #     # if w in self.vocab.keys(): #TODO: Why wouldn't it be
+            #     node_embeddings.append(self.bert.embed(w))
+
+            #First word summarizer
+            node_embedding = self.bert.embed(graph_node_text[0])
+            self.embeds.append(node_embedding)
+        self.state_ent_emb = torch.nn.Embedding.from_pretrained(self.embeds, freeze=True)
+                    
 
     def init_state_ent_emb(self):
         embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
@@ -319,6 +345,7 @@ class StateNetwork(torch.nn.Module):
         self.state_ent_emb = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
 
     def load_files(self):
+
         entities = {}
 
         #TODO: Investigate initialze_double/entity2id.tsv
@@ -341,6 +368,9 @@ class StateNetwork(torch.nn.Module):
         if len(adj.size()) == 2:
             adj = adj.unsqueeze(0)
         batch_size = len(adj)
-        x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
-        out = self.fc1(x)
+        if self.use_bert:
+            pass
+        else:
+            x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
+            out = self.fc1(x)
         return out

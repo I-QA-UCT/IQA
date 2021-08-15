@@ -19,19 +19,20 @@ class SupplementaryKG(object):
 
     def __init__(self, use_cuda, use_bert):
     
-        self.vocab, self.actions, self.vocab_er = self.load_files()
+        
+        self.use_bert = use_bert
+        self.vocab, self.vocab_er = self.load_files()
+        # self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
         self.room = "" #Room at the centre of KG
         
         self.graph_state = nx.DiGraph()
-        self.adj_matrix = np.zeros((len(self.vocab_er['entity']), len(self.vocab_er['entity']))) #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
+        self.adj_matrix = None #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
         self.graph_state_rep = []  #Representation attention between entities 
 
         self.use_cuda = use_cuda
-        self.use_bert = use_bert
         self.entities = {}
         self.entity_nums = 0
-
 
     def load_files(self):
         vocab = {}
@@ -40,23 +41,49 @@ class SupplementaryKG(object):
             for i, line in enumerate(file_output):
                 vocab[line.strip()] = i
 
-        actions = eval(open('act2id.txt', 'r').readline())
+        if self.use_bert:
+            return vocab, None
+        else:
+            entities = {}
+            with open("entity2id.tsv", 'r') as file_output:
+                for line in file_output:
+                    entity, entity_id = line.split('\t')
+                    entities[entity.strip()] = int(entity_id.strip())
 
-        entities = {}
-        with open("entity2id.tsv", 'r') as file_output:
-            for line in file_output:
-                entity, entity_id = line.split('\t')
-                entities[entity.strip()] = int(entity_id.strip())
+            relations = {}
+            with open("relation2id.tsv", 'r') as file_output:
+                for line in file_output:
+                    relation, relation_id = line.split('\t')
+                    relations[relation.strip()] = int(relation_id.strip())
+            
+            entity_relation_dict = {'entity': entities, 'relation': relations}
+            
+            return vocab, entity_relation_dict
 
-        relations = {}
-        with open("relation2id.tsv", 'r') as file_output:
-            for line in file_output:
-                relation, relation_id = line.split('\t')
-                relations[relation.strip()] = int(relation_id.strip())
+    # def load_files(self):
+    #     vocab = {}
+    #     i = 0
+    #     with open('vocabularies/word_vocab.txt', 'r') as file_output:
+    #         for i, line in enumerate(file_output):
+    #             vocab[line.strip()] = i
+
+    #     actions = eval(open('act2id.txt', 'r').readline())
+
+    #     entities = {}
+    #     with open("entity2id.tsv", 'r') as file_output:
+    #         for line in file_output:
+    #             entity, entity_id = line.split('\t')
+    #             entities[entity.strip()] = int(entity_id.strip())
+
+    #     relations = {}
+    #     with open("relation2id.tsv", 'r') as file_output:
+    #         for line in file_output:
+    #             relation, relation_id = line.split('\t')
+    #             relations[relation.strip()] = int(relation_id.strip())
         
-        entity_relation_dict = {'entity': entities, 'relation': relations}
+    #     entity_relation_dict = {'entity': entities, 'relation': relations}
         
-        return vocab, actions, entity_relation_dict
+    #     return vocab, actions, entity_relation_dict
 
     def visualize(self):
         pos = nx.spring_layout(self.graph_state)
@@ -210,7 +237,7 @@ class SupplementaryKG(object):
 
     def get_state_representation(self):
         
-        result = []
+        
         
         if self.use_bert:
 
@@ -226,10 +253,10 @@ class SupplementaryKG(object):
                 target_id = self.entities[target]        
                 self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
 
-                result.append(self.entities[source])
-                result.append(self.entities[target])
+            return self.entities.keys()
 
         else:
+            result = []
             self.adj_matrix = np.zeros((len(
                 self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
 
@@ -248,7 +275,7 @@ class SupplementaryKG(object):
                 result.append(self.vocab_er['entity'][source])
                 result.append(self.vocab_er['entity'][target])
 
-        return list(set(result))
+            return list(set(result))
 
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
@@ -257,6 +284,7 @@ class SupplementaryKG(object):
             self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
         else:
             self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix)
+
 
 if __name__ == '__main__':
 
