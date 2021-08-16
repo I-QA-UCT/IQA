@@ -94,3 +94,11 @@ gat:
   gat_out_size: 100
   use_bert: True
   bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768
+  transformer: 
+    hidden_size: 1
+    num_types: 1 
+    num_layers: 1
+    num_heads: 1
+    transformer_heads: 1
+    dropout: 1
+

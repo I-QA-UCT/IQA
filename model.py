@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from layers import Embedding, GATlayer, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear
+from layers import Embedding, GATlayer, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear, Transformer
 from bert_embedder import BertEmbedder
 
 logger = logging.getLogger(__name__)
@@ -300,6 +300,7 @@ class StateNetwork(torch.nn.Module):
             self.vocab_kge, self.vocab = self.load_files()
             self.state_ent_emb = None
             self.embeds = []
+            self.transformer = Transformer(hidden_size=params['transformer']['hidden_size'], num_types=params['transformer']['num_types'], num_layers=params['transformer']['num_layers'], num_heads=params['transformer']['num_heads'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
         else:
             self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
             if params['qa_init']:
@@ -381,3 +382,4 @@ class StateNetwork(torch.nn.Module):
             x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
         out = self.fc1(x)
         return out
+
