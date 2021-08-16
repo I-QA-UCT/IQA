@@ -187,7 +187,7 @@ class DecisionTransformer(nn.Module):
                 [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
                 dim=1).to(dtype=torch.long)
             actions = torch.cat(
-                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.vocab_size),
+                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
                              device=actions.device), actions],
                 dim=1).to(dtype=torch.long)
             returns_to_go = torch.cat(

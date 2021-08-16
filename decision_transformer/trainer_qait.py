@@ -172,10 +172,11 @@ class SequenceTrainer(Trainer):
         if self.model.answer_question:
             answer_preds = self.model.forward(
             states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
-
-            loss = self.loss_fn(answer_preds[:,-1],answer_targets[:,-1])
+            
             answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
             answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
+
+            loss = self.loss_fn(answer_preds[:,-1],answer_targets[:,-1])
         else:
             command_target = torch.clone(actions)
             action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(command_target.shape[-1])]
