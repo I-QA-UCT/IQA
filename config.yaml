@@ -65,7 +65,7 @@ episodic_counting_bonus:
   revisit_counting_lambda_anneal_to: 0.0
 
 model:
-  use_pretrained_embedding: True
+  use_pretrained_embedding: False
   word_embedding_size: 300
   word_embedding_trainable: False
   char_embedding_size: 32
@@ -92,13 +92,13 @@ gat:
   vocab_size: None
   alpha: 0.2
   gat_out_size: 100
-  use_bert: True
+  use_bert: False
   bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768
   transformer: 
-    hidden_size: 1
-    num_types: 1 
+    hidden_size: 3 #TODO combine
+    num_types: None
     num_layers: 1
-    num_heads: 1
+    num_heads: None
     transformer_heads: 1
-    dropout: 1
+    dropout: 0.2
 

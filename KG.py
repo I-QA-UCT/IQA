@@ -213,11 +213,11 @@ class SupplementaryKG(object):
                 v = '_'.join(str(rule[2]).split())
                 if u not in self.entities.keys():
                     self.entities[u] = self.entity_nums
-                    self.entity_nums = self.entity_nums+1
+                    self.entity_nums += 1
 
                 if v not in self.entities.keys():
                     self.entities[v] = self.entity_nums
-                    self.entity_nums = self.entity_nums+1
+                    self.entity_nums += 1
                 
                 if u != 'it' and v != 'it':
                         self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])

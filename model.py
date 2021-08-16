@@ -325,6 +325,7 @@ class StateNetwork(torch.nn.Module):
             node_embedding= node_embedding.mean(dim=0) 
             self.embeds.append(node_embedding)
         
+        
         self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
                     
     def init_state_ent_emb(self):
@@ -377,9 +378,13 @@ class StateNetwork(torch.nn.Module):
         batch_size = len(adj)
         if self.use_bert:
             self.state_ent_emb_bert(state_ents)
-            x = self.GAT(self.state_ent_emb.weight,adj)#.view(batch_size, -1)
+            x = self.GAT(self.state_ent_emb.weight, adj).view(batch_size, -1)
+            # batch, masks = self.transformer.pad(x)
+            # out = self.transformer.encoder(x)
+            out = x
         else:
             x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
-        out = self.fc1(x)
+            print(x.size())
+            out = self.fc1(x)
         return out
 
