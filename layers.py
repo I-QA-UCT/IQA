@@ -4,8 +4,10 @@ import h5py
 import numpy as np
 import torch.nn.functional as F
 
-from torch.nn import TransformerEncoderLayer, LayerNorm, TransformerEncoder
+from torch.nn import TransformerEncoderLayer, LayerNorm, TransformerEncoder, ReLU
 from torch.nn.utils.rnn import pad_sequence
+
+
 
 # from Code.Embedding.positional_embedder import PositionalEmbedder
 # from Code.Training import dev
@@ -540,10 +542,10 @@ class GATlayer(torch.nn.Module):
         self.attentional_mech = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
     
     def forward(self,input, adj):
-        h_i = torch.mm(input, self.weights) #matrix multiplication to botain W_h_i
-        h_size = h_i.size()[0]
+        h = torch.mm(input, self.weights) #matrix multiplication to obtain W_h_i
+        h_size = h.size()[0]
         
-        attention_input = torch.cat( [h_i.repeat(1,h_size).view(h_size*h_size,-1), h_i.repeat(h_size,1)] , dim=1).view(h_size, -1, 2 * self.out_features)
+        attention_input = torch.cat( [h.repeat(1,h_size).view(h_size*h_size,-1), h.repeat(h_size,1)] , dim=1).view(h_size, -1, 2 * self.out_features)
         e_ij =torch.matmul(attention_input, self.attentional_mech) #computes attention coefficients
         softmax_input = self.activation(e_ij).squeeze(2) #input into the softmax function
 
@@ -554,7 +556,7 @@ class GATlayer(torch.nn.Module):
         attention = F.softmax(attention,dim=1)
         attention = F.dropout(attention, self.dropout, training = self.training)
         
-        h_prime = torch.matmul(attention, h_i)
+        h_prime = torch.matmul(attention, h)
 
         if self.concat:
             return F.elu(h_prime)

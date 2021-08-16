@@ -92,7 +92,7 @@ gat:
   vocab_size: None
   alpha: 0.2
   gat_out_size: 100
-  use_bert: False
+  use_bert: True
   bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768
   transformer: 
     hidden_size: 3 #TODO combine
