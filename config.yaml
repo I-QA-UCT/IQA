@@ -86,10 +86,11 @@ gat:
   embedding_size: 50
   gat_hidden_size: 3
   dropout_ratio: 0.2
-  gat_emb_size: 50
+  gat_emb_size: 50 #If using BERT, this will dynamically be changed to match bert_size i.e. this parameter will only be evaulated if not using bert
   gat_num_heads: 1
   qa_init: True
   vocab_size: None
   alpha: 0.2
   gat_out_size: 100
-  use_bert: False
+  use_bert: True
+  bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768

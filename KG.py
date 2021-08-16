@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import networkx as nx
 import json
 import requests
@@ -31,7 +32,7 @@ class SupplementaryKG(object):
         self.graph_state_rep = []  #Representation attention between entities 
 
         self.use_cuda = use_cuda
-        self.entities = {}
+        self.entities = OrderedDict()
         self.entity_nums = 0
 
     def load_files(self):
@@ -253,7 +254,7 @@ class SupplementaryKG(object):
                 target_id = self.entities[target]        
                 self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
 
-            return self.entities.keys()
+            return list(self.entities.keys())
 
         else:
             result = []

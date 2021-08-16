@@ -535,7 +535,7 @@ class GATlayer(torch.nn.Module):
     
     def forward(self,input, adj):
         h_i = torch.mm(input, self.weights) #matrix multiplication to botain W_h_i
-        h_size = h_i.size()[0] 
+        h_size = h_i.size()[0]
         
         attention_input = torch.cat( [h_i.repeat(1,h_size).view(h_size*h_size,-1), h_i.repeat(h_size,1)] , dim=1).view(h_size, -1, 2 * self.out_features)
         e_ij =torch.matmul(attention_input, self.attentional_mech) #computes attention coefficients

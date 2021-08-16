@@ -283,42 +283,49 @@ class StateNetwork(torch.nn.Module):
         # self.action_set = action_set
         self.use_cuda = params['use_cuda']
         self.use_bert = params['use_bert']
-
-        self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
-        
+        self.bert_size = params['bert_size']
         if self.use_bert:
-            self.bert = BertEmbedder("mini", [])
+            
+            if self.bert_size == 'tiny':
+                features = 128
+            elif self.bert_size == 'mini':
+                features = 256
+            elif self.bert_size == 'base':
+                features = 768
+            else:
+                features = 512 #Small or medium
+
+            self.GAT = GAT(num_features=features, num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
+            self.bert = BertEmbedder(self.bert_size, [])
             self.vocab_kge, self.vocab = self.load_files()
             self.state_ent_emb = None
             self.embeds = []
         else:
+            self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
             if params['qa_init']:
                 self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
             else:
                 self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
             self.vocab_kge, self.vocab = self.load_files()
             self.init_state_ent_emb()
-            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, 100) #TODO:Dynamic sizing here
+            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, params['gat_out_size']) #TODO:Dynamic sizing here
 
     def state_ent_emb_bert(self, entities):
 
+        print(entities)
+        # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
+        # entities = [red,red_hot,pepper, hot_pepper]
         num_current = len(self.embeds)
         for i in range(num_current, len(entities)):
-            graph_node_text = self.entities[i].split('_') #Text in OpenIE extractioned entities
+            graph_node_text = entities[i].replace('_', ' ')
+            node_embedding = self.bert.embed(graph_node_text).squeeze(0) #TODO: Why not? Check returned size
 
-            # graph_embedding = self.bert.embed(graph_node_text) #TODO: Why not? Check returned size
-
-            # node_embeddings = []
-            # for w in graph_node_text:
-            #     # if w in self.vocab.keys(): #TODO: Why wouldn't it be
-            #     node_embeddings.append(self.bert.embed(w))
-
-            #First word summarizer
-            node_embedding = self.bert.embed(graph_node_text[0])
+            #Summarizer
+            node_embedding= node_embedding.mean(dim=0) 
             self.embeds.append(node_embedding)
-        self.state_ent_emb = torch.nn.Embedding.from_pretrained(self.embeds, freeze=True)
+        
+        self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
                     
-
     def init_state_ent_emb(self):
         embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
         for i in range(len(self.vocab_kge)):
@@ -362,15 +369,15 @@ class StateNetwork(torch.nn.Module):
 
         return entities, vocab
 
-
     def forward(self, graph_rep):
-        _, adj = graph_rep
+        state_ents, adj = graph_rep
         if len(adj.size()) == 2:
             adj = adj.unsqueeze(0)
         batch_size = len(adj)
         if self.use_bert:
-            pass
+            self.state_ent_emb_bert(state_ents)
+            x = self.GAT(self.state_ent_emb.weight,adj)#.view(batch_size, -1)
         else:
             x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
-            out = self.fc1(x)
+        out = self.fc1(x)
         return out
