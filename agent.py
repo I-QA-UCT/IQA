@@ -135,12 +135,15 @@ class Agent:
                 print(
                     "WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
+                self.device = torch.device("cpu")
             else:
                 torch.backends.cudnn.deterministic = True
                 torch.cuda.manual_seed(self.random_seed)
                 self.use_cuda = True
+                self.device = torch.device("cuda")
         else:
             self.use_cuda = False
+            self.device = torch.device("cpu")
 
         if self.question_type == "location":
             self.answer_type = "pointing"
@@ -179,9 +182,8 @@ class Agent:
         self.v_min = self.config['distributional']['v_min']
         self.v_max = self.config['distributional']['v_max']
         self.support = torch.linspace(
-            self.v_min, self.v_max, self.atoms)  # Support (range) of z
-        if self.use_cuda:
-            self.support = self.support.cuda()
+            self.v_min, self.v_max, self.atoms,dtype=torch.float16,device=self.device)  # Support (range) of z
+       
         self.delta_z = (self.v_max - self.v_min) / (self.atoms - 1)
 
         # counting reward
@@ -463,10 +465,6 @@ class Agent:
             batch_log_probs = batch_indices_dist.log_prob(batch_indices)
             batch_entropy = batch_indices_dist.entropy()
 
-            if self.use_cuda:
-                batch_indices = batch_indices.cuda()
-                batch_log_probs = batch_log_probs.cuda()
-                batch_entropy = batch_entropy.cuda()
 
             action_indices.append(batch_indices)
             action_log_probs.append(batch_log_probs)
@@ -780,11 +778,7 @@ class Agent:
         # calculate entropy loss
         entropy_loss = torch.stack(concat_entropies).mean()
         # calculate actor (policy) loss
-        policy_losses = torch.tensor(0.0)
-
-        if self.use_cuda:
-            policy_losses = policy_losses.cuda()
-            entropy_loss = entropy_loss.cuda()
+        policy_losses = torch.tensor(0.0,dtype=torch.float16,device=self.device)
 
         for i in range(3):
             policy_losses += (-torch.stack(concat_probs)
@@ -919,13 +913,11 @@ class Agent:
             u[(l < (self.atoms - 1)) * (l == u)] += 1
 
             # Distribute probability of Tz
-            m = torch.zeros(batch_size, self.atoms).float()
-            if self.use_cuda:
-                m = m.cuda()
+            m = torch.zeros(batch_size, self.atoms,dtype=torch.float16,device=self.device).float()
+            
             offset = torch.linspace(0, ((batch_size - 1) * self.atoms),
-                                    batch_size).unsqueeze(1).expand(batch_size, self.atoms).long()
-            if self.use_cuda:
-                offset = offset.cuda()
+                                    batch_size,device=self.device).unsqueeze(1).expand(batch_size, self.atoms).long()
+            
             m.view(-1).index_add_(0, (l + offset).view(-1), (next_q_value *
                                                              (u.float() - b)).view(-1))  # m_l = m_l + p(s_t+n, a*)(u - b)
             m.view(-1).index_add_(0, (u + offset).view(-1), (next_q_value *
