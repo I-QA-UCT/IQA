@@ -135,7 +135,7 @@ def experiment(
             tlen = s[-1].shape[1]
             s[-1] = np.concatenate([np.zeros((1, max_len - tlen, state_dim)), s[-1]], axis=1)
             # s[-1] = (s[-1] - state_mean) / state_std
-            a[-1] = np.concatenate([np.ones((1, max_len - tlen, act_dim)), a[-1]], axis=1)
+            a[-1] = np.concatenate([np.zeros((1, max_len - tlen, act_dim)), a[-1]], axis=1)
             r[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), r[-1]], axis=1)
             ans[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), ans[-1]], axis=1)
             rtg[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), rtg[-1]], axis=1) / scale
@@ -152,6 +152,7 @@ def experiment(
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(device=device)
         ans = torch.from_numpy(np.concatenate(ans, axis=0)).to(dtype=torch.long, device=device)
         game_mask = torch.from_numpy(np.concatenate(game_mask, axis=0)).to(dtype=torch.long, device=device)
+
         return s, a, r, rtg, timesteps, mask, ans, game_mask
 
     def eval_episodes(target_rew):
@@ -282,6 +283,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_to_wandb', '-w', type=bool, default=True)
     parser.add_argument('--sentence_tensor_length', '-sent', type=int, default=170)
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
+    parser.add_argument('--answer_question', '-qa', type=bool, default=False)
 
     args = parser.parse_args()
 

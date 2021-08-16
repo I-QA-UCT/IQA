@@ -7,7 +7,6 @@ from trajectory_gpt2 import GPT2Model
 
 from collections import defaultdict
 
-
 class DecisionTransformer(nn.Module):
 
     """
@@ -19,10 +18,11 @@ class DecisionTransformer(nn.Module):
             state_dim,
             act_dim,
             hidden_size,
-            vocab_size = 1654,
             max_length=None,
             max_ep_len=50,
             action_tanh=True,
+            answer_question = False,
+            vocab_size = 1653,
             **kwargs
     ):
         super(DecisionTransformer,self).__init__()
@@ -34,6 +34,8 @@ class DecisionTransformer(nn.Module):
         self.max_ep_len = max_ep_len
         self.vocab_size = vocab_size
         self.max_length = max_length
+
+        self.answer_question = answer_question
 
         config = GPT2Config(
             vocab_size=self.vocab_size,
@@ -57,21 +59,22 @@ class DecisionTransformer(nn.Module):
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
-        self.predict_answer = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
-        )
+        if answer_question:
+            self.predict_answer = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
+            )
+        else:
+            self.predict_action = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
+            )
 
-        self.predict_action = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
-        )
+            self.predict_modifer = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
+            )
 
-        self.predict_modifer = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
-        )
-
-        self.predict_object = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
-        )
+            self.predict_object = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
+            )
         
     def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None):
 
@@ -116,8 +119,6 @@ class DecisionTransformer(nn.Module):
         action_embeddings = action_embeddings + time_embeddings
         returns_embeddings = returns_embeddings + time_embeddings
         
-
-    
         # this makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
         # which works nice in an autoregressive sense since states predict actions
         stacked_inputs = torch.stack(
@@ -141,20 +142,35 @@ class DecisionTransformer(nn.Module):
         # reshape x so that the second dimension corresponds to the original
         # returns (0), states (1), or actions (2); i.e. x[:,1,t] is the token for s_t
         x = x.reshape(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
+        
+        # Allow for modifier and object preds to use action?
+        # Allow for answer preds to use entire sequence x instead of just state?
 
-        action_preds = self.predict_action(x[:,1])  # predict next action given state
-        modifier_preds = self.predict_modifer(x[:,1])  # predict next action given state
-        object_preds = self.predict_object(x[:,1])  # predict next action given state
-        answer_pred = self.predict_answer(x[:,1]) # predict answer
+        return self.predict(x)
 
-        return action_preds, modifier_preds, object_preds, answer_pred
+    def predict(self, encoded_sequence):
+        
+        """
+        Function that takes in the GRU encoded sequence and returns predictions. 
+        """
+        encoded_returns, encoded_states, encoded_actions = encoded_sequence[:,0],encoded_sequence[:,1],encoded_sequence[:,2]
+        
+        if self.answer_question:
+            return self.predict_answer(encoded_states) # predict answer
+
+        action_preds = self.predict_action(encoded_states)  # predict next action given state
+        modifier_preds = self.predict_modifer(encoded_states)  # predict next action given state
+        object_preds = self.predict_object(encoded_states)  # predict next action given state
+
+        return action_preds, modifier_preds, object_preds
+
 
     def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
         
         # print(states, actions, returns_to_go, timesteps,sep="\n")
         
         states = torch.Tensor(states).reshape(1, -1, self.state_dim)
-        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim)
+        actions = torch.Tensor(actions).reshape(1, -1, self.vocab_size)
         returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1)
         timesteps = torch.Tensor(timesteps).reshape(1, -1)
 
@@ -171,7 +187,7 @@ class DecisionTransformer(nn.Module):
                 [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
                 dim=1).to(dtype=torch.long)
             actions = torch.cat(
-                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
+                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.vocab_size),
                              device=actions.device), actions],
                 dim=1).to(dtype=torch.long)
             returns_to_go = torch.cat(
@@ -184,10 +200,17 @@ class DecisionTransformer(nn.Module):
         else:
             attention_mask = None
 
-        action_preds, modifier_preds, object_preds, answer_pred = self.forward(
+        if self.answer_question:
+            answer_pred = self.forward(
+            states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
+            return torch.argmax(answer_pred[0,-1])
+            
+        action_preds, modifier_preds, object_preds = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
 
-        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1]), torch.argmax(answer_pred[0,-1])
+        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1])
+
+
 
 class Trajectory(object):
 

@@ -166,31 +166,33 @@ class SequenceTrainer(Trainer):
 
     def train_step(self):
         states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, game_mask = self.get_batch(self.batch_size)
-        command_target = torch.clone(actions)
 
-        action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(command_target.shape[-1])]
+        vocab_size = self.model.vocab_size
 
-        action_preds,modifier_preds,object_preds,answer_preds = self.model.forward(
+        if self.model.answer_question:
+            answer_preds = self.model.forward(
             states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
-        
-        #answer_pred = torch.argmax(answer_pred,dim=-1)
-        # answer_pred = answer_pred*game_mask
 
-        vocab_size = action_preds.shape[2]
+            loss = self.loss_fn(answer_preds[:,-1],answer_targets[:,-1])
+            answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+            answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
+        else:
+            command_target = torch.clone(actions)
+            action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(command_target.shape[-1])]
 
-        action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-        action_target = action_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+            action_preds,modifier_preds,object_preds = self.model.forward(
+            states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
 
-        modifier_preds = modifier_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-        modifier_target = modifier_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+            action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+            action_target = action_target.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-        object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-        object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+            modifier_preds = modifier_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+            modifier_target = modifier_target.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-        answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-        answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
-
-        loss = self.loss_fn(action_preds,action_target) + self.loss_fn(modifier_preds,modifier_target) + self.loss_fn(object_preds,object_target) + self.loss_fn(answer_preds,answer_targets)
+            object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+            object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+            
+            loss = self.loss_fn(action_preds,action_target) + self.loss_fn(modifier_preds,modifier_target) + self.loss_fn(object_preds,object_target)
 
         self.optimizer.zero_grad()
         loss.backward()
