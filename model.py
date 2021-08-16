@@ -606,22 +606,19 @@ class ICM_Feature(torch.nn.Module):
 
     def __init__(self, state_embedding_size, hidden_size, feature_size):
         super(ICM_Feature, self).__init__()
-
-        self.encoder = torch.nn.GRU(state_embedding_size,feature_size,batch_first=True)
         
-        # self.feature_net = torch.nn.Sequential(
-        #     torch.nn.Linear(state_embedding_size, hidden_size),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Linear(hidden_size, hidden_size),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Linear(hidden_size, feature_size)
-        # )
+        self.feature_net = torch.nn.Sequential(
+            torch.nn.Linear(state_embedding_size, hidden_size),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_size, hidden_size),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_size, feature_size)
+        )
 
     def forward(self, input):
-        _,out = self.encoder(input)
+        state, _ = torch.max(input, 1)
         
-        # return self.feature_net(out.permute(1,0,2).squeeze(1))
-        return out.permute(1,0,2).squeeze(1)
+        return self.feature_net(state)
 
 
 class ICM(torch.nn.Module):
@@ -646,8 +643,7 @@ class ICM(torch.nn.Module):
         self.forward_model = ICM_Forward(
             feature_size+action_size, self.hidden_size, feature_size)
         
-        
-
+    
     def read_config(self):
         """
         Read config file to set ICM hyperparameters

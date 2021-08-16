@@ -1,6 +1,6 @@
 # General Settings
 general:
-  train_data_size: 10                #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 500                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
   random_map: True                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"           # location, existence, attribute
@@ -11,7 +11,7 @@ general:
 # Training Settings
 training:
   batch_size: 1                       # Number of games played in parallel
-  max_episode: 100000                 # Number of episodes to train
+  max_episode: 200000                 # Number of episodes to train
   learn_start_from_this_episode: 0    # Episodes of games played randomly to generate experience - only important for Value based methods
   target_net_update_frequency: 1000   # sync target net with online net per this many epochs - only important for Value based methods
   max_nb_steps_per_episode: 50        # after this many steps, a game is terminated
@@ -31,8 +31,8 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_location_10_icm_inverse_only_no_feature_net'
-  load_pretrained: True               # during test, enable this so that the agent load your pretrained model
+  experiment_tag: 'a2c_location_500_random_inverse_semantics'
+  load_pretrained: False               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
@@ -58,7 +58,6 @@ dueling_networks: False
 # use DDQN
 double_dqn: False
 
-
 # Actor Critic Settings
 a2c:
   enable: True
@@ -67,15 +66,14 @@ a2c:
 # Intrinsic Curiosity Module Settings
 icm:
   enable: True
-  scaling_factor: 0.05
-  beta: 0
+  scaling_factor: 0
+  beta: 0           
   lambda: 1
   hidden_size: 128
   state_feature_size: 128
   inverse_reward: True
   use_intrinsic_reward: False
   use_feature_net : False
-
 
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled
