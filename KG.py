@@ -6,6 +6,8 @@ import numpy as np
 from nltk import sent_tokenize, word_tokenize
 import torch
 import matplotlib.pyplot as plt
+from torch_geometric.data import Data
+from bert_embedder import BertEmbedder
 
 def openIE(sentence):
     url = "http://localhost:9000/"
@@ -18,7 +20,7 @@ def openIE(sentence):
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_cuda, use_bert):
+    def __init__(self, use_cuda, use_bert, bert_size):
     
         
         self.use_bert = use_bert
@@ -34,6 +36,10 @@ class SupplementaryKG(object):
         self.use_cuda = use_cuda
         self.entities = OrderedDict()
         self.entity_nums = 0
+
+        self.bert = BertEmbedder(bert_size, [])
+        self.state_ent_emb = None
+        self.embeds = []
 
     def load_files(self):
         vocab = {}
@@ -235,56 +241,83 @@ class SupplementaryKG(object):
             self.graph_state.add_edges_from(prev_room_subgraph.edges)
 
         return
+    
+    def state_ent_emb_bert(self, entities):
+
+        print(entities)
+        # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
+        # entities = [red,red_hot,pepper, hot_pepper]
+        num_current = len(self.embeds)
+        for i in range(num_current, len(entities)):
+            graph_node_text = entities[i].replace('_', ' ')
+            node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+
+            #Summarizer
+            node_embedding= node_embedding.mean(dim=0) 
+            self.embeds.append(node_embedding)
+        
+        self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
+    
+    def get_state_representation_bert(self):
+        
+        self.adj_matrix = [[],[]]
+
+        for source, target in self.graph_state.edges:
+
+            source = '_'.join(str(source).split()) #Make source and target nodes look the same OpenIE entities
+            target = '_'.join(str(target).split())
+
+            source_id = self.entities[source]    
+            target_id = self.entities[target]
+            self.adj_matrix[0].append(source_id) 
+            self.adj_matrix[1].append(target_id)
+
+        edge_index = torch.tensor(self.adj_matrix, dtype=torch.long)#.cuda()
+
+        self.state_ent_emb_bert(list(self.entities.keys()))
+
+        if self.use_cuda:
+            data = Data(x=self.state_ent_emb, edge_index=edge_index)
+        else:
+            data = Data(x=self.state_ent_emb, edge_index=edge_index)
+
+        return data
 
     def get_state_representation(self):
         
-        
-        
-        if self.use_bert:
+        result = []
+        self.adj_matrix = np.zeros((len(
+            self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
 
-            self.adj_matrix = np.zeros((len(
-                self.entities.keys()), len(self.entities.keys())))
+        for source, target in self.graph_state.edges:
+            source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
+            target = '_'.join(str(target).split())
 
-            for source, target in self.graph_state.edges:
+            #Ignore words not in discovered by agent in entity_relation_collection.py
+            if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
+                break
 
-                source = '_'.join(str(source).split()) #Make source and target nodes look the same OpenIe entities
-                target = '_'.join(str(target).split())
+            source_id = self.vocab_er['entity'][source]    
+            target_id = self.vocab_er['entity'][target]      
+            self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
 
-                source_id = self.entities[source]    
-                target_id = self.entities[target]        
-                self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
+            result.append(self.vocab_er['entity'][source])
+            result.append(self.vocab_er['entity'][target])
 
-            return list(self.entities.keys())
+        return list(set(result))
 
-        else:
-            result = []
-            self.adj_matrix = np.zeros((len(
-                self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
-
-            for source, target in self.graph_state.edges:
-                source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
-                target = '_'.join(str(target).split())
-
-                #Ignore words not in discovered by agent in entity_relation_collection.py
-                if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
-                    break
-
-                source_id = self.vocab_er['entity'][source]    
-                target_id = self.vocab_er['entity'][target]      
-                self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
-
-                result.append(self.vocab_er['entity'][source])
-                result.append(self.vocab_er['entity'][target])
-
-            return list(set(result))
+  
 
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
-        self.update_state(visible_state, prev_action)        
-        if self.use_cuda:
-            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
+        self.update_state(visible_state, prev_action)
+        if self.use_bert:
+            self.graph_state = self.get_state_representation_bert()
         else:
-            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix)
+            if self.use_cuda:
+                self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
+            else:
+                self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix)
 
 
 if __name__ == '__main__':

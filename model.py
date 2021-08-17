@@ -12,7 +12,7 @@ from torch_geometric.typing import Adj
 from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
 
 from layers import Embedding, GATlayer, MergeEmbeddings, EncoderBlock, CQAttention, AnswerPointer, masked_softmax, NoisyLinear, Transformer
-from bert_embedder import BertEmbedder
+
 
 logger = logging.getLogger(__name__)
 
@@ -279,120 +279,146 @@ class DQN(torch.nn.Module):
 #         x = F.dropout(x, self.dropout, training=self.training)
 #         x = torch.cat([attention(x, adj) for attention in self.attentions], dim=1)
 #         x = F.dropout(x, self.dropout, training=self.training)
-#         return x    
+#
+#          return x    
 
-# class StateNetwork(torch.nn.Module):
-#     # def __init__(self, action_set, params, embeddings=None):
-#     def __init__(self, params, embeddings=None):
-#         super(StateNetwork,self).__init__()
-#         self.params = params
-#         # self.action_set = action_set
-#         self.use_cuda = params['use_cuda']
-#         self.use_bert = params['use_bert']
-#         self.bert_size = params['bert_size']
-#         if self.use_bert:
+class GAT(torch.nn.Module):
+
+    def __init__(self, num_features, num_hidden, num_class, dropout, alpha, num_heads):
+        super(GAT, self).__init__()
+        self.dropout = dropout
+
+        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout)
+        self.out_attention = GATConv(in_channels=num_hidden * num_heads, out_channels=num_class, heads=1, concat=False, negative_slope=alpha, dropout=dropout) #TODO Investigate heads=1
+    
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = self.attentions(x, adj)
+        # x = F.elu(x) #Optional nonlinearity function
+        x = F.dropout(x, self.dropout, training=self.training)
+        return x
+        # x = self.attention(x, adj)
+        # return F.log_softmax(x, dim=1) #For multi head attention
+
+    #TODO: Add multi-head attention to config 
+
+class StateNetwork(torch.nn.Module):
+    # def __init__(self, action_set, params, embeddings=None):
+    def __init__(self, params, embeddings=None):
+        super(StateNetwork,self).__init__()
+        self.params = params
+        # self.action_set = action_set
+        self.use_cuda = params['use_cuda']
+        self.use_bert = params['use_bert']
+        self.bert_size = params['bert_size']
+        if self.use_bert:
             
-#             if self.bert_size == 'tiny':
-#                 features = 128
-#             elif self.bert_size == 'mini':
-#                 features = 256
-#             elif self.bert_size == 'base':
-#                 features = 768
-#             else:
-#                 features = 512 #Small or medium
+            if self.bert_size == 'tiny':
+                features = 128
+            elif self.bert_size == 'mini':
+                features = 256
+            elif self.bert_size == 'base':
+                features = 768
+            else:
+                features = 512 #Small or medium
 
-#             self.GAT = GAT(num_features=features, num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
-#             self.bert = BertEmbedder(self.bert_size, [])
-#             self.vocab_kge, self.vocab = self.load_files()
-#             self.state_ent_emb = None
-#             self.embeds = []
-#             self.transformer = Transformer(hidden_size=params['transformer']['hidden_size'], num_types=params['transformer']['num_types'], num_layers=params['transformer']['num_layers'], num_heads=params['transformer']['num_heads'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
-#         else:
-#             self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
-#             if params['qa_init']:
-#                 self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
-#             else:
-#                 self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
-#             self.vocab_kge, self.vocab = self.load_files()
-#             self.init_state_ent_emb()
-#             self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, params['gat_out_size']) #TODO:Dynamic sizing here
+            self.GAT = GAT(num_features=features, num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
+            # self.bert = BertEmbedder(self.bert_size, [])
+            # self.vocab_kge, self.vocab = self.load_files()
+            # self.state_ent_emb = None
+            # self.embeds = []
+            self.transformer = Transformer(hidden_size=params['transformer']['hidden_size'], num_types=params['transformer']['num_types'], num_layers=params['transformer']['num_layers'], num_heads=params['transformer']['num_heads'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
+        else:
+            self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
+            if params['qa_init']:
+                self.pretrained_embeds = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+            else:
+                self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
+            self.vocab_kge, self.vocab = self.load_files()
+            self.init_state_ent_emb()
+            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, params['gat_out_size']) #TODO:Dynamic sizing here
 
-#     def state_ent_emb_bert(self, entities):
+    # def state_ent_emb_bert(self, entities):
 
-#         print(entities)
-#         # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
-#         # entities = [red,red_hot,pepper, hot_pepper]
-#         num_current = len(self.embeds)
-#         for i in range(num_current, len(entities)):
-#             graph_node_text = entities[i].replace('_', ' ')
-#             node_embedding = self.bert.embed(graph_node_text).squeeze(0) #TODO: Why not? Check returned size
+    #     print(entities)
+    #     # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
+    #     # entities = [red,red_hot,pepper, hot_pepper]
+    #     num_current = len(self.embeds)
+    #     for i in range(num_current, len(entities)):
+    #         graph_node_text = entities[i].replace('_', ' ')
+    #         node_embedding = self.bert.embed(graph_node_text).squeeze(0) #TODO: Why not? Check returned size
 
-#             #Summarizer
-#             node_embedding= node_embedding.mean(dim=0) 
-#             self.embeds.append(node_embedding)
+    #         #Summarizer
+    #         node_embedding= node_embedding.mean(dim=0) 
+    #         self.embeds.append(node_embedding)
         
         
-#         self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
+    #     self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
                     
-#     def init_state_ent_emb(self):
-#         embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
-#         for i in range(len(self.vocab_kge)):
-#             graph_node_text = self.vocab_kge[i].split('_') #Text in OpenIE extractioned entities
-#             graph_node_ids = []
-#             for w in graph_node_text:
-#                 if w in self.vocab.keys(): 
-#                     if self.vocab[w] < len(self.vocab) - 2:
-#                         graph_node_ids.append(self.vocab[w])
-#                     else:
-#                         graph_node_ids.append(1)
-#                 else:
-#                     graph_node_ids.append(1)
+    def init_state_ent_emb(self):
+        embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
+        for i in range(len(self.vocab_kge)):
+            graph_node_text = self.vocab_kge[i].split('_') #Text in OpenIE extractioned entities
+            graph_node_ids = []
+            for w in graph_node_text:
+                if w in self.vocab.keys(): 
+                    if self.vocab[w] < len(self.vocab) - 2:
+                        graph_node_ids.append(self.vocab[w])
+                    else:
+                        graph_node_ids.append(1)
+                else:
+                    graph_node_ids.append(1)
 
-#             if self.use_cuda:
-#                 graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
-#             else:
-#                 graph_node_ids = torch.LongTensor(graph_node_ids)
+            if self.use_cuda:
+                graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
+            else:
+                graph_node_ids = torch.LongTensor(graph_node_ids)
 
-#             cur_embeds = self.pretrained_embeds(graph_node_ids)
+            cur_embeds = self.pretrained_embeds(graph_node_ids)
 
-#             cur_embeds = cur_embeds.mean(dim=0)
-#             embeddings[i, :] = cur_embeds
-#         self.state_ent_emb = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
+            cur_embeds = cur_embeds.mean(dim=0)
+            embeddings[i, :] = cur_embeds
+        self.state_ent_emb = torch.nn.Embedding.from_pretrained(embeddings, freeze=False)
 
-#     def load_files(self):
+    def load_files(self):
 
-#         entities = {}
+        entities = {}
 
-#         #TODO: Investigate initialze_double/entity2id.tsv
-#         with open("entity2id.tsv", 'r') as file_output:
-#             for line in file_output:
-#                 entity, entity_id = line.split('\t')
-#                 entities[int(entity_id.strip())] = entity.strip()
+        #TODO: Investigate initialze_double/entity2id.tsv
+        with open("entity2id.tsv", 'r') as file_output:
+            for line in file_output:
+                entity, entity_id = line.split('\t')
+                entities[int(entity_id.strip())] = entity.strip()
 
-#         vocab = {}
-#         i = 0
-#         with open('vocabularies/word_vocab.txt', 'r') as file_output:
-#             for i, line in enumerate(file_output):
-#                 vocab[line.strip()] = i
+        vocab = {}
+        i = 0
+        with open('vocabularies/word_vocab.txt', 'r') as file_output:
+            for i, line in enumerate(file_output):
+                vocab[line.strip()] = i
 
-#         return entities, vocab
+        return entities, vocab
 
-#     def forward(self, graph_rep):
-#         state_ents, adj = graph_rep
-#         if len(adj.size()) == 2:
-#             adj = adj.unsqueeze(0)
-#         batch_size = len(adj)
-#         if self.use_bert:
-#             self.state_ent_emb_bert(state_ents)
-#             x = self.GAT(self.state_ent_emb.weight, adj).view(batch_size, -1)
-#             # batch, masks = self.transformer.pad(x)
-#             # out = self.transformer.encoder(x)
-#             # out = x
-#             return None
-#         else:
-#             x = self.GAT(self.state_ent_emb.weight,adj).view(batch_size, -1)
-#             out = self.fc1(x)
-#         return out
+    def forward(self, graph_rep):
+        
+        if self.use_bert:
+            # data = graph_rep
+            # self.state_ent_emb_bert(state_ents)
+
+            # x = self.GAT(self.state_ent_emb.weight, adj)#.view(batch_size, -1)
+
+            # batch, masks = self.transformer.pad(x)
+            # out = self.transformer.encoder(x)
+            # out = x
+            print("HERE")
+            return None
+        else:
+            _, adj = graph_rep
+            if len(adj.size()) == 2:
+                adj = adj.unsqueeze(0)
+            batch_size = len(adj)
+            x = self.GAT(self.state_ent_emb.weight, adj).view(batch_size, -1)
+            out = self.fc1(x)
+        return out
 
 
 # class GAT(torch.nn.Module):
@@ -449,19 +475,3 @@ class DQN(torch.nn.Module):
 #         return (f'{self.__class__.__name__}({self.in_channels}, '
 #                 f'{self.out_channels}, num_layers={self.num_layers})')
 
-class GAT(torch.nn.Module):
-
-    def __init__(self, num_features, num_hidden, num_class, dropout, alpha, num_heads):
-        super(GAT, self).__init__()
-        self.dropout = dropout
-
-        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout)
-        
-        self.out_attention = GATConv(in_channels=num_hidden * num_heads, out_channels=num_class, heads=1, concat=False, negative_slope=alpha, dropout=dropout) #TODO Investigate heads=1
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = self.attention(x, adj)
-        x = F.elu(x) #TODO Investigate
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = self.attention(x, adj)
-        return F.log_softmax(x, dim=1) #TODO Investigate    
