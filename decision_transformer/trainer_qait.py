@@ -73,11 +73,13 @@ class JsonDataset(Dataset):
                 trajectory["answer"] = [word_encodings[episode["answer"]]]*len(episode["steps"])
 
                 for game_step in episode["steps"]:
+                    
+                    game_step["state"].replace("<s>","[CLS]").replace("</s>","[SEP]").replace("<|>","[SEP]")
 
                     # Get the action, modifier, object triple 
-                    act, mod, obj = [game_step["command"][command] for command in commands]
+                    act, mod, obj = [game_step["command"][command].replace("</s>","[PAD]").replace("<pad>","[PAD]") for command in commands]
 
-                    if mod == EOS_tag and obj != PAD_tag:
+                    if mod == PAD_tag and obj != PAD_tag:
                         mod,obj = obj, mod
 
                     # Timestep
@@ -89,7 +91,6 @@ class JsonDataset(Dataset):
 
                     # trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
                     #  "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
-
                     tokenized_state = self.tz(game_step["state"],padding='max_length', truncation=True, max_length = self.sentence_length)
                     tokenized_action = self.tz(" ".join([act,mod,obj]), add_special_tokens=False,padding='max_length',truncation=True, max_length = 3)
                     trajectory.add({"rewards" : reward, "observations" :  tokenized_state["input_ids"],
