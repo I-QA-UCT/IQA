@@ -3,6 +3,8 @@ import torch
 from torch.utils.data import Dataset
 from model_qait import DecisionTransformer, Trajectory
 
+from transformers import BertTokenizer
+
 from collections import defaultdict
 
 import time
@@ -17,8 +19,10 @@ class JsonDataset(Dataset):
     def __init__(self,offline_rl_data_filename,sentence_length=200,max_episodes=50):      
         self.sentence_length = sentence_length
         self.max_episodes = max_episodes
+        self.tz = BertTokenizer.from_pretrained('bert-base-uncased')#,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
-        
+
     def pad_input(self,sentence, seq_len):
 
         diff = len(sentence) - seq_len
@@ -44,11 +48,12 @@ class JsonDataset(Dataset):
         trajectories = []
         with open(offline_rl_data_filename) as offline_rl_data,open(word_encodings_filename) as word_encodings_data:
             
+
             word_encodings = defaultdict(lambda: 1,json.load(word_encodings_data))
             commands = ["action","modifier","object"]
 
-            EOS_tag = word_encodings["</s>"]
-            PAD_tag = word_encodings["<pad>"]
+            EOS_tag = "[SEP]"#word_encodings["</s>"]
+            PAD_tag = "[PAD]"#word_encodings["<pad>"]
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
                 
@@ -72,7 +77,7 @@ class JsonDataset(Dataset):
                     # Get the action, modifier, object triple 
                     act, mod, obj = [game_step["command"][command] for command in commands]
 
-                    if word_encodings[mod] == EOS_tag and word_encodings[obj] != PAD_tag:
+                    if mod == EOS_tag and obj != PAD_tag:
                         mod,obj = obj, mod
 
                     # Timestep
@@ -82,8 +87,15 @@ class JsonDataset(Dataset):
                     # Thus, when all steps complete reward should = 0
                     reward -= game_step["reward"]
 
-                    trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
-                     "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
+                    # trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
+                    #  "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
+
+                    tokenized_state = self.tz(game_step["state"],padding='max_length', truncation=True, max_length = self.sentence_length)
+                    tokenized_action = self.tz(" ".join([act,mod,obj]), add_special_tokens=False,padding='max_length',truncation=True, max_length = 3)
+                    trajectory.add({"rewards" : reward, "observations" :  tokenized_state["input_ids"],
+                     "timesteps" : timestep, "actions" : tokenized_action["input_ids"],
+                     #"token_type_ids" : tokenized_state["token_type_ids"],
+                     })
 
                 trajectories.append(trajectory)
 
@@ -179,7 +191,7 @@ class SequenceTrainer(Trainer):
             loss = self.loss_fn(answer_preds[:,-1],answer_targets[:,-1])
         else:
             command_target = torch.clone(actions)
-            action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(command_target.shape[-1])]
+            action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
 
             action_preds,modifier_preds,object_preds = self.model.forward(
             states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)

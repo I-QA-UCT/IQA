@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from transformers import BertTokenizer, BertModel
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -22,7 +23,8 @@ class DecisionTransformer(nn.Module):
             max_ep_len=50,
             action_tanh=True,
             answer_question = False,
-            vocab_size = 1653,
+            vocab_size = 1654,
+            bert_embeddings = True,
             **kwargs
     ):
         super(DecisionTransformer,self).__init__()
@@ -32,10 +34,12 @@ class DecisionTransformer(nn.Module):
         self.act_dim = act_dim
         self.state_dim = state_dim
         self.max_ep_len = max_ep_len
-        self.vocab_size = vocab_size
+        self.vocab_size = vocab_size if not bert_embeddings else 30522
         self.max_length = max_length
 
         self.answer_question = answer_question
+
+        self.bert_embeddings = bert_embeddings
 
         config = GPT2Config(
             vocab_size=self.vocab_size,
@@ -54,8 +58,10 @@ class DecisionTransformer(nn.Module):
         # When done try embeddig actions seperately
 
         # Single GRU for action and state
-        self.encoder = torch.nn.GRU(hidden_size,hidden_size,batch_first=True)
-
+        self.encoder = torch.nn.GRU(768 if self.bert_embeddings else hidden_size,hidden_size,batch_first=True)
+        
+        # BERT for encoding
+        self.bert = BertModel.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
@@ -93,16 +99,31 @@ class DecisionTransformer(nn.Module):
 
         # Embded state with GRU
         encoded_states = []
-        state_word_embeddings = self.word_embedding(states)
+        if self.bert_embeddings:
+            state_word_embeddings = []
+            for batch in range(len(states[0])):
+                embedded_state = self.bert(input_ids=states[:,batch,:])
+                state_word_embeddings.append(embedded_state["last_hidden_state"])
+            state_word_embeddings = torch.stack(state_word_embeddings,dim=1)
+        else:
+            state_word_embeddings = self.word_embedding(states)
+
         for batch in range(len(state_word_embeddings)):
             encoded_state,_ = self.encoder(state_word_embeddings[batch])
             encoded_states.append(encoded_state[:,-1,:])
         
         encoded_state=torch.stack(encoded_states)
 
-        # Embded action with GRU
         encoded_actions = []
-        action_word_embeddings = self.word_embedding(actions)
+        if self.bert_embeddings:
+            action_word_embeddings = []
+            for batch in range(len(actions[0])):
+                embedded_action = self.bert(input_ids=actions[:,batch,:])
+                action_word_embeddings.append(embedded_action["last_hidden_state"])
+            action_word_embeddings = torch.stack(action_word_embeddings,dim=1)
+        else:
+            action_word_embeddings = self.word_embedding(actions)
+
         for batch in range(len(action_word_embeddings)):
             encoded_action,_ = self.encoder(action_word_embeddings[batch])
             encoded_actions.append(encoded_action[:,-1,:])
@@ -166,11 +187,9 @@ class DecisionTransformer(nn.Module):
 
 
     def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
-        
-        # print(states, actions, returns_to_go, timesteps,sep="\n")
-        
+
         states = torch.Tensor(states).reshape(1, -1, self.state_dim)
-        actions = torch.Tensor(actions).reshape(1, -1, self.vocab_size)
+        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim)
         returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1)
         timesteps = torch.Tensor(timesteps).reshape(1, -1)
 
@@ -209,7 +228,6 @@ class DecisionTransformer(nn.Module):
             states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
 
         return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1])
-
 
 
 class Trajectory(object):

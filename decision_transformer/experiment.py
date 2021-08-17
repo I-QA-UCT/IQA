@@ -254,8 +254,8 @@ def experiment(
             wandb.log(outputs)
 
     qa = "_qa" if variant["answer_question"] else ""
-
-    torch.save(model.state_dict(), f"./decision_transformer/saved_models/{variant['env'}{qa}.pt")
+    print()
+    torch.save(model.state_dict(), f"./decision_transformer/saved_models/{variant['env']}{qa}.pt")
     with open(f"./decision_transformer/saved_models/{variant['env']}{qa}_config.pkl", "wb") as config:
         pickle.dump(variant, config)
 
