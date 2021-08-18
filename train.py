@@ -411,8 +411,7 @@ def train(data_path,log_to_wandb):
         command_rewards = generic.to_pt(command_rewards_np, enable_cuda=agent.use_cuda, type="float")  # batch x game step
         
         if agent.icm and agent.use_intrinsic_reward:
-            intrinsic_rewards = torch.stack(intrinsic_rewards)*generic.to_pt(game_running_mask.T) # batch x gamestep
-            
+            intrinsic_rewards = torch.stack(intrinsic_rewards)*generic.to_pt(game_running_mask.T,enable_cuda=agent.use_cuda) # batch x gamestep
             command_rewards = command_rewards+intrinsic_rewards
 
         for i in range(command_rewards_np.shape[1]):
