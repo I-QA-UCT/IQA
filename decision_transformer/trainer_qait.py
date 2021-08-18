@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from model_qait import DecisionTransformer, Trajectory
+from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
 
 from transformers import BertTokenizer
 
@@ -70,7 +70,8 @@ class JsonDataset(Dataset):
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
                 
                 trajectory["mask"] = episode["mask"]
-                trajectory["answer"] = [word_encodings[episode["answer"]]]*len(episode["steps"])
+                trajectory["answer"] = self.tz(episode["answer"],padding='max_length', truncation=True, max_length = 1)
+                print(trajectory["answer"])
 
                 for game_step in episode["steps"]:
                     
@@ -174,6 +175,62 @@ class Trainer:
 
         return loss.detach().cpu().item()
 
+class QuestionAnsweringDataLoader:
+    def __init__(self,data="random_rollout.json",batch_size=4):
+        self.offline_rl_data_filename = RELATIVE_PATH + data
+        self.word_encodings_filename = WORD_ENCODINGS
+        self.batch_size = batch_size
+
+        
+    def __iter__(self):
+
+        with open(self.offline_rl_data_filename) as offline_rl_data,open(self.word_encodings_filename) as word_encodings_data:
+            
+            encodings = json.load(word_encodings_data)
+            vocab_size = len(encodings)
+            choices = list(encodings.keys())
+
+
+            prompts, questions, answers = [], [], [0]*vocab_size
+
+            for episode_no,sample_entry in enumerate(offline_rl_data):
+
+                episode = json.loads(sample_entry)
+                questions.append(episode["question"])
+                answers[encodings[episode["answer"]]] = 1
+
+                prompt = []
+                for game_step in episode["steps"]:
+                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
+                
+                prompts.append(" ".join(prompt))
+                if episode_no % self.batch_size == 0:
+                    yield prompts, choices, questions, answers
+                    prompts, questions, answers = [], [], [0]*vocab_size
+
+class QuestionAnsweringTrainer:
+
+    def __init__(self,model,optimizer,loss_fn,data="random_rollouts.json", batch_size=4):
+        self.dataloader = QuestionAnsweringDataLoader(data=data,batch_size=batch_size)
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+    
+    def train(self):
+        
+        for prompts, choices, questions,answers in self.dataloader:
+
+            output = self.model.forward(prompts, choices, questions)
+
+            loss = self.loss_fn(output,answers)
+
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
+            self.optimizer.step()
+            print(f"Loss: {loss.detach().cpu().item()}")
+            
+
 
 class SequenceTrainer(Trainer):
 
@@ -218,18 +275,15 @@ class SequenceTrainer(Trainer):
 
         return loss.detach().cpu().item()
 
-# if __name__ == "__main__":
-#     model = DecisionTransformer(
-#             vocab_size=1644,
-#             max_length=50,
-#             max_ep_len=50,
-#             hidden_size=64,
-#             n_layer=2,
-#             n_head=8,
-#             n_inner=4*1644,
-#             activation_function='tanh',
-#             n_positions=1024)
+if __name__ == "__main__":
+    model = QuestionAnsweringBert()
+    model.train()
+    
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=1e-4,
+        weight_decay=1e-4,
+    )
+    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(),data="dqn_loc.json", batch_size=1)
 
-#     trainer = Trainer(model,OFFLINE_RL_DATA)
-
-#     trainer.train()
+    trainer.train()

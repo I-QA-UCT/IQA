@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertForQuestionAnswering, BertForMultipleChoice
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -61,7 +61,7 @@ class DecisionTransformer(nn.Module):
         self.encoder = torch.nn.GRU(768 if self.bert_embeddings else hidden_size,hidden_size,batch_first=True)
         
         # BERT for encoding
-        self.bert = BertModel.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+        self.bert = BertForQuestionAnswering.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
@@ -229,6 +229,64 @@ class DecisionTransformer(nn.Module):
 
         return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1])
 
+class QuestionAnsweringBert(nn.Module):
+    def __init__(self):
+        super(QuestionAnsweringBert,self).__init__()
+
+        self.bert = BertForMultipleChoice.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    
+    def predict(self, question, passage):
+        
+        encoding = self.tokenizer.encode(question,passage)
+
+        seperation_index = encoding.index(self.tokenizer.sep_token_id)
+        num_seg_a = seperation_index + 1
+        num_seg_b = len(encoding) - num_seg_a
+        segment_ids = [0]*num_seg_a + [1]*num_seg_b
+
+        output = self.bert(torch.tensor([encoding]), # The tokens representing our input text.
+                                    token_type_ids=torch.tensor([segment_ids])) # The segment IDs to differentiate question from answer_text
+        answer_start = torch.argmax(output["start_logits"])
+        answer_end = torch.argmax(output["end_logits"])
+
+        # Get the string versions of the input tokens.
+        tokens = self.tokenizer.convert_ids_to_tokens(encoding)
+
+        # Start with the first token.
+        answer = tokens[answer_start]
+
+        # Select the remaining answer tokens and join them with whitespace.
+        for i in range(answer_start + 1, answer_end + 1):
+            
+            # If it's a subword token, then recombine it with the previous token.
+            if tokens[i][0:2] == '##':
+                answer += tokens[i][2:]
+            
+            # Otherwise, add a space then the token.
+            else:
+                answer += ' ' + tokens[i]
+
+        return answer
+
+    def forward(self, prompts, choices, questions):#questions, passages):
+
+        bert_output = []
+
+        for prompt, question in zip(prompts, questions):
+            encoding = self.tokenizer( ["[CLS] "+prompt + " [SEP] " + question + " [SEP]"]*len(choices) ,choices, return_tensors='pt', padding=True)
+            output = self.bert(**{k: v.unsqueeze(0) for k,v in encoding.items()})
+            bert_output.append(output["logits"])
+            
+            # if answers:
+            #     loss += output["loss"]
+
+        return bert_output
+
+#  prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
+#  choice0 = "It is eaten with a fork and a knife."
+#  choice1 = "It is eaten while held in the hand."
+#  labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;)), batch size 1
 
 class Trajectory(object):
 
