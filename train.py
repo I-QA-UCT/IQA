@@ -418,8 +418,12 @@ def train(data_path,log_to_wandb):
             transition_cache[i].append(command_rewards[:, i])
         print(command_rewards_np[0])
         if agent.icm and agent.use_intrinsic_reward:
-            print(intrinsic_rewards[0].numpy())
-        
+            if agent.use_cuda:
+                print(intrinsic_rewards[0].cpu().numpy())
+            else:
+                print(intrinsic_rewards[0].numpy())
+
+                
         # push command generation experience into replay buffer
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
