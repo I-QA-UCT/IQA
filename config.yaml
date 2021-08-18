@@ -1,6 +1,6 @@
 # General Settings
 general:
-  train_data_size: 500                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 1                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
   random_map: True                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"           # location, existence, attribute
@@ -65,15 +65,15 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
-  scaling_factor: 0
+  enable: False
+  scaling_factor: 1
   beta: 0           
   lambda: 1
   hidden_size: 128
   state_feature_size: 128
-  inverse_reward: True
-  use_intrinsic_reward: False
-  use_feature_net : False
+  inverse_reward: False
+  use_intrinsic_reward: True
+  use_feature_net : True
 
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled

@@ -543,13 +543,7 @@ class ICM_Inverse(torch.nn.Module):
 
     def __init__(self, input_size, hidden_size, output_size,vocab_size):
         super(ICM_Inverse, self).__init__()
-        # self.inverse_net = torch.nn.Sequential(
-        #     torch.nn.Linear(input_size, hidden_size),
-        #     torch.nn.ELU(),
-        #     torch.nn.Linear(hidden_size, hidden_size),
-        #     torch.nn.ELU(),
-        #     torch.nn.Linear(hidden_size, output_size)
-        # )
+        
         self.action_decoder = torch.nn.Sequential(
             torch.nn.Linear(input_size,hidden_size),
             torch.nn.LeakyReLU(),

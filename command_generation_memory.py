@@ -4,8 +4,8 @@ import torch
 
 
 # a snapshot of state to be stored in replay memory
-Transition = namedtuple('Transition', ('state_input','state_char','action_input','next_state_input','next_state_char','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
-PolicyTransition = namedtuple('Transition', ('state_input','state_char','action_input','next_state_input','next_state_char','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
+Transition = namedtuple('Transition', ('state_input','action_input','next_state_input','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
+PolicyTransition = namedtuple('Transition', ('state_input','action_input','next_state_input','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
 
 class SingleEpisodeStorage():
 
@@ -21,16 +21,16 @@ class SingleEpisodeStorage():
 
     def get_batch(self):
         
-        state_input_list,state_char_list,action_input_list,next_state_input_list,next_state_char_list,obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[],[],[],[],[],[]
+        state_input_list,action_input_list,next_state_input_list,obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[],[],[],[]
     
         for item in self.batch_episode_memory:
-            state_input,state_char,action_input,next_state_input,next_state_char,obs, quest, possible_words, word_indices, reward, state_value, action_log_probs,action_entropies, is_final = item
+            state_input,action_input,next_state_input,obs, quest, possible_words, word_indices, reward, state_value, action_log_probs,action_entropies, is_final = item
 
             state_input_list.append(state_input)
-            state_char_list.append(state_char)
+            
             action_input_list.append(action_input)
             next_state_input_list.append(next_state_input)
-            next_state_char_list.append(next_state_char)
+            
 
             obs_list.append(obs)
             quest_list.append(quest)
@@ -43,7 +43,7 @@ class SingleEpisodeStorage():
             is_finals.append(is_final)
            
         
-        return state_input_list,state_char_list,action_input_list,next_state_input_list,next_state_char_list,obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
+        return state_input_list,action_input_list,next_state_input_list,obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
 
            
 
@@ -108,11 +108,10 @@ class PrioritizedReplayMemory(object):
                 continue
 
             # all good
-            state_encoded = which_memory[head].state_input
-            state_char = which_memory[head].state_char
-            action_encoded = which_memory[head].action_input
-            next_state_encoded = which_memory[head].next_state_input
-            next_state_char = which_memory[head].next_state_char
+            state_input = which_memory[head].state_input
+            action_input = which_memory[head].action_input
+            next_state_input = which_memory[head].next_state_input
+            
 
             obs = which_memory[head].observation_list
             quest = which_memory[head].quest_list
@@ -125,7 +124,7 @@ class PrioritizedReplayMemory(object):
             rewards_up_to_next_final = [self.discount_gamma ** i * which_memory[head + i].reward for i in range(next_final - head + 1)]
             reward = torch.sum(torch.stack(rewards_up_to_next_final))
 
-            return (state_encoded,state_char,action_encoded,next_state_encoded,next_state_char,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
+            return (state_input,action_input,next_state_input,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
 
     def _get_batch(self, n_list, which_memory):
         res = []
@@ -158,17 +157,16 @@ class PrioritizedReplayMemory(object):
         if res_beta is not None:
             res += res_beta
 
-        encoded_state_list,state_char_list,encoded_action_list,encoded_next_state_list,next_state_char_list,obs_list, quest_list, possible_words_list, word_indices_list = [], [], [], [],[],[],[]
+        state_list,action_list,next_state_list,obs_list, quest_list, possible_words_list, word_indices_list = [], [], [], [],[],[],[]
         reward_list, next_obs_list, next_possible_words_list, actual_n_list = [], [], [], []
 
         for item in res:
-            enc_state,state_char,enc_act,enc_next,next_state_char,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
+            state,act,next_state,obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
 
-            encoded_state_list.append(enc_state)
-            state_char_list.append(state_char)
-            encoded_action_list.append(enc_act)
-            encoded_next_state_list.append(enc_next)
-            next_state_char_list.append(next_state_char)
+            state_list.append(state)  
+            action_list.append(act)
+            next_state_list.append(next_state)
+            
 
             obs_list.append(obs)
             quest_list.append(quest)
@@ -184,7 +182,7 @@ class PrioritizedReplayMemory(object):
         rewards = torch.stack(reward_list, 0)  # batch
         actual_n_list = np.array(actual_n_list)
 
-        return encoded_state_list,state_char_list,encoded_action_list,encoded_next_state_list,next_state_char_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
+        return state_list,action_list,next_state_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
 
     def __len__(self):
         return len(self.alpha_memory) + len(self.beta_memory)

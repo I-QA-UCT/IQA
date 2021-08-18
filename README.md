@@ -13,7 +13,7 @@ pip install https://github.com/Microsoft/TextWorld/archive/rebased-interactive-q
 pip install -U spacy
 python -m spacy download en
 pip install tqdm h5py visdom pyyaml
-conda install pytorch torchvision cudatoolkit=9.2 -c pytorch
+conda install pytorch torchvision cudatoolkit=9.2 -c pytorch (Or later versions work fine)
 pip install gym==0.15.4 (Dependency Issue with Original Code)
 conda install h5py (Dependency Issue with Original Code)
 pip install wandb (Only for logging to wandb)

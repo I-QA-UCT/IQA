@@ -217,6 +217,8 @@ def train(data_path,log_to_wandb):
             if qa_loss is not None:
                 running_avg_qa_loss.push(qa_loss)
         
+        if agent.a2c and agent.noisy_net:
+            agent.reset_noise()
 
         ### The actual game step loop where the agent performs actions
         for step_no in range(agent.max_nb_steps_per_episode):
@@ -236,7 +238,7 @@ def train(data_path,log_to_wandb):
                         init_facts[i] = copy.copy(new_facts)
 
             # generate commands
-            if agent.noisy_net:
+            if not agent.a2c and agent.noisy_net:
                 agent.reset_noise()  # Draw a new set of noisy weights
 
             # This will always be the current observation string since we set history size to one
@@ -274,15 +276,15 @@ def train(data_path,log_to_wandb):
             if agent.icm:
                 with torch.no_grad():
                    
-                    action_input, action_input_chars, _ = agent.get_agent_inputs(agent.pad_commands(commands))
+                    action_input, _, _ = agent.get_agent_inputs(agent.pad_commands(commands))
 
                     # process the state after the action
                     state = [generic.preproc(item, tokenizer=agent.nlp)for item in state_strings]
                     
                     state_input, state_char, _ =agent.get_agent_inputs(state)
 
-                    # TODO Remove redundant prev_state and state - potentially use for extra information storage
-                    replay_info = [prev_state,prev_state,action_input,state,state]+replay_info
+                   
+                    replay_info = [prev_state,action_input,state]+replay_info
 
                     for b in range(batch_size):
                         all_action_inputs[b].append(action_input[b])   
@@ -295,7 +297,7 @@ def train(data_path,log_to_wandb):
              
           
             # Rainbow algorithm - resetting noisy nets
-            if agent.noisy_net and step_in_total % agent.update_per_k_game_steps == 0:
+            if not agent.a2c and agent.noisy_net and step_in_total % agent.update_per_k_game_steps == 0:
                 agent.reset_noise()  # Draw a new set of noisy weights
 
             # If episode number reacheas the start to learn threshold - start optimizing weights
@@ -425,13 +427,12 @@ def train(data_path,log_to_wandb):
             for i in range(len(transition_cache)):
                 if agent.a2c:
                     if agent.icm:
-                        prev_state_input,prev_state_char,action_input,state_input,state_char,batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
-                        
+                        prev_state_input,action_input,state_input,batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                     else:
                         batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices,batch_state_value,batch_action_log_probs,batch_action_entropies, _, batch_rewards = transition_cache[i]
                 else:
                     if agent.icm:
-                       prev_state_input,prev_state_char,action_input,state_input,state_char, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                       prev_state_input,action_input,state_input, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                     else:
                         batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
@@ -439,15 +440,15 @@ def train(data_path,log_to_wandb):
                     is_final = False
                 if agent.a2c:
                     if not agent.icm:
-                        agent.command_generation_replay_memory.push(None,None,None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+                        agent.command_generation_replay_memory.push(None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
                     else:
-                        agent.command_generation_replay_memory.push(prev_state_input[b],prev_state_char[b],action_input[b],state_input[b],state_char[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
+                        agent.command_generation_replay_memory.push(prev_state_input[b],action_input[b],state_input[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b],batch_state_value[b],[item[b] for item in batch_action_log_probs],[item[b] for item in batch_action_entropies], is_final)
               
                 else:
                     if not agent.icm:
-                        agent.command_generation_replay_memory.push(is_prior,None,None,None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                        agent.command_generation_replay_memory.push(is_prior,None,None,None,batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                     else:
-                        agent.command_generation_replay_memory.push(is_prior,prev_state_input[b],prev_state_char[b],action_input[b],state_input[b],state_char[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                        agent.command_generation_replay_memory.push(is_prior,prev_state_input[b],action_input[b],state_input[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
 

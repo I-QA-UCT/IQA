@@ -182,7 +182,7 @@ class Agent:
         self.v_min = self.config['distributional']['v_min']
         self.v_max = self.config['distributional']['v_max']
         self.support = torch.linspace(
-            self.v_min, self.v_max, self.atoms,dtype=torch.float16,device=self.device)  # Support (range) of z
+            self.v_min, self.v_max, self.atoms,device=self.device)  # Support (range) of z
        
         self.delta_z = (self.v_max - self.v_min) / (self.atoms - 1)
 
@@ -721,22 +721,24 @@ class Agent:
         """
 
         """
+        
         data = self.command_generation_replay_memory.get_batch()
         if data is None:
             return None
 
-        enc_state_list,state_char_list,enc_action_list,enc_next_list,next_state_char_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
-        # print(enc_action_list)
+
+        state_list,action_list,next_state_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
+        
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
         if self.icm:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-            input_state,input_state_chars,_ = self.get_agent_inputs(enc_state_list)
-            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(enc_next_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
             
             encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
             encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
-            action_inputs = torch.stack(enc_action_list)
+            action_inputs = torch.stack(action_list)
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
             
@@ -808,7 +810,7 @@ class Agent:
         if data is None:
             return None
         
-        enc_state_list,state_char_list,enc_action_list,enc_next_list,next_state_char_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        state_list,action_list,next_state_list,obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         batch_size = len(actual_n_list)
 
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
@@ -821,12 +823,12 @@ class Agent:
         
 
         if self.icm:
-            input_state,input_state_chars,_ = self.get_agent_inputs(enc_state_list)
-            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(enc_next_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
             
             encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
             encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
-            action_inputs = torch.stack(enc_action_list)
+            action_inputs = torch.stack(action_list)
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
 
