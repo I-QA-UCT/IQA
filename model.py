@@ -66,7 +66,7 @@ class DQN(torch.nn.Module):
         self.aggregation_layers = model_config['aggregation_layers']
         self.aggregation_conv_num = model_config['aggregation_conv_num']
         self.block_hidden_dim = model_config['block_hidden_dim']
-        self.gat_out_dim = self.config['gat']['gat_out_size']
+        self.gat_out_dim = self.config['gat']['out_features']
         self.n_heads = model_config['n_heads']
         self.block_dropout = model_config['block_dropout']
         self.attention_dropout = model_config['attention_dropout']
@@ -284,21 +284,23 @@ class DQN(torch.nn.Module):
 
 class GAT(torch.nn.Module):
 
-    def __init__(self, num_features, num_hidden, num_class, dropout, alpha, num_heads):
+    def __init__(self, num_features, num_hidden, num_class, num_heads, dropout, alpha):
         super(GAT, self).__init__()
         self.dropout = dropout
 
         self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout)
         self.out_attention = GATConv(in_channels=num_hidden * num_heads, out_channels=num_class, heads=1, concat=False, negative_slope=alpha, dropout=dropout) #TODO Investigate heads=1
     
-    def forward(self, x, adj):
+    def forward(self, graph_rep):
+        x = graph_rep.x
+        adj = graph_rep.edge_index
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.attentions(x, adj)
         # x = F.elu(x) #Optional nonlinearity function
         x = F.dropout(x, self.dropout, training=self.training)
         return x
-        # x = self.attention(x, adj)
-        # return F.log_softmax(x, dim=1) #For multi head attention
+        # x = self.out_attention(x, adj)
+        # return F.elu(x) #For multi head attention
 
     #TODO: Add multi-head attention to config 
 
@@ -322,7 +324,7 @@ class StateNetwork(torch.nn.Module):
             else:
                 features = 512 #Small or medium
 
-            self.GAT = GAT(num_features=features, num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
+            self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout_ratio'], alpha=params['alpha'])
             # self.bert = BertEmbedder(self.bert_size, [])
             # self.vocab_kge, self.vocab = self.load_files()
             # self.state_ent_emb = None
@@ -403,14 +405,12 @@ class StateNetwork(torch.nn.Module):
         if self.use_bert:
             # data = graph_rep
             # self.state_ent_emb_bert(state_ents)
-
-            # x = self.GAT(self.state_ent_emb.weight, adj)#.view(batch_size, -1)
-
-            # batch, masks = self.transformer.pad(x)
-            # out = self.transformer.encoder(x)
-            # out = x
-            print("HERE")
-            return None
+            x = self.GAT(graph_rep)#.view(batch_size, -1)
+            
+            batch, masks = self.transformer.pad([x])
+            out = self.transformer.encoder(src=batch, src_key_padding_mask=masks)
+            print(out.size())
+            return out
         else:
             _, adj = graph_rep
             if len(adj.size()) == 2:

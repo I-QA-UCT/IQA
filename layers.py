@@ -4,14 +4,14 @@ import h5py
 import numpy as np
 import torch.nn.functional as F
 
-from torch.nn import TransformerEncoderLayer, LayerNorm, TransformerEncoder, ReLU
+from torch.nn import TransformerEncoderLayer, TransformerEncoder#, LayerNorm#,, ReLU
 from torch.nn.utils.rnn import pad_sequence
+from torch.nn import init
+from torch.nn.parameter import Parameter
+import numbers
+from torch import Tensor, Size
+from typing import Union, List, Tuple
 
-
-
-# from Code.Embedding.positional_embedder import PositionalEmbedder
-# from Code.Training import dev
-# from Config.config import conf
 
 def compute_mask(x):
     mask = torch.ne(x, 0).float()
@@ -583,15 +583,15 @@ class Transformer(torch.nn.Module):
         encoder_norm = LayerNorm(self.hidden_size)
         self.encoder = TransformerEncoder(encoder_layer, num_layers, encoder_norm)
 
-    @staticmethod
-    def get_type_ids(type, length, type_map):
-        type_id = type_map[type]
-        type_ids = torch.tensor([type_id for _ in range(length)]).long()#.cuda()
-        return type_ids
+    # @staticmethod
+    # def get_type_ids(type, length, type_map):
+    #     type_id = type_map[type]
+    #     type_ids = torch.tensor([type_id for _ in range(length)]).long()#.cuda()
+    #     return type_ids
 
-    def get_type_tensor(self, type, length, type_map):
-        ids = Transformer.get_type_ids(type, length, type_map)
-        return self.type_embedder(ids).view(1, -1, self.hidden_size)
+    # def get_type_tensor(self, type, length, type_map):
+    #     ids = Transformer.get_type_ids(type, length, type_map)
+    #     return self.type_embedder(ids).view(1, -1, self.hidden_size)
 
     @staticmethod
     def pad(vecs):
@@ -607,51 +607,44 @@ class Transformer(torch.nn.Module):
 
         # print("mask:", masks.size(), masks)
         # print("batch:", batch.size())
-        return batch, masks
+        return batch, masks     
 
+_shape_t = Union[int, List[int], Size]
+class LayerNorm(torch.nn.Module):
+    
+    __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
+    normalized_shape: Tuple[int, ...]
+    eps: float
+    elementwise_affine: bool
+    
+    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5, elementwise_affine: bool = True,
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(LayerNorm, self).__init__()
+        if isinstance(normalized_shape, numbers.Integral):
+            # mypy error: incompatible types in assignment
+            normalized_shape = (normalized_shape,)  # type: ignore[assignment]
+        self.normalized_shape = tuple(normalized_shape)  # type: ignore[arg-type]
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+        if self.elementwise_affine:
+            self.weight = Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
+            self.bias = Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
 
-# class Transformer(nn.Module):
+        self.reset_parameters()
 
-#     def __init__(self, hidden_size, num_types, num_layers, intermediate_fac=2, use_type_embeddings=True, use_pos_embeddings=False):
-#         super().__init__()
-#         self.num_heads = conf.heads
-#         self.use_type_embeddings = use_type_embeddings
-#         self.use_pos_embeddings = use_pos_embeddings
-#         self.num_types = num_types
-#         self.hidden_size = hidden_size
+    def reset_parameters(self) -> None:
+        if self.elementwise_affine:
+            init.ones_(self.weight)
+            init.zeros_(self.bias)
 
-#         if use_type_embeddings:
-#             self.type_embedder = nn.Embedding(num_types, self.hidden_size)
-#         if use_pos_embeddings:
-#             self.pos_embedder = PositionalEmbedder(hidden_size)
+    def forward(self, input: Tensor) -> Tensor:
+        return F.layer_norm(
+            input, self.normalized_shape, self.weight, self.bias, self.eps)
 
-#         encoder_layer = TransformerEncoderLayer(self.hidden_size, conf.transformer_heads,
-#                                                 self.hidden_size * intermediate_fac, conf.dropout, 'relu')
-#         encoder_norm = LayerNorm(self.hidden_size)
-#         self.encoder = TransformerEncoder(encoder_layer, num_layers, encoder_norm)
-
-#     @staticmethod
-#     def get_type_ids(type, length, type_map):
-#         type_id = type_map[type]
-#         type_ids = torch.tensor([type_id for _ in range(length)]).long().to(dev())
-#         return type_ids
-
-#     def get_type_tensor(self, type, length, type_map):
-#         ids = Transformer.get_type_ids(type, length, type_map)
-#         return self.type_embedder(ids).view(1, -1, self.hidden_size)
-
-#     @staticmethod
-#     def pad(vecs):
-#         """
-#             pytorches transformer layer wants 1=pad, 0=seq
-#             it also wants (seq, batch, emb)
-#         """
-#         lengths = [ex.size(-2) for ex in vecs]
-#         max_len = max(lengths)
-#         masks = [[False] * size + [True] * (max_len - size) for size in lengths]
-#         masks = torch.tensor(masks).to(dev())
-#         batch = pad_sequence(vecs, batch_first=False)
-
-#         # print("mask:", masks.size(), masks)
-#         # print("batch:", batch.size())
-#         return batch, masks         
+    def extra_repr(self) -> str:
+        return '{normalized_shape}, eps={eps}, ' \
+            'elementwise_affine={elementwise_affine}'.format(**self.__dict__)

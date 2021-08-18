@@ -83,20 +83,19 @@ model:
   question_answerer_hidden_dim: 64
 
 gat:
-  embedding_size: 50
-  gat_hidden_size: 3
-  dropout_ratio: 0.2
-  gat_emb_size: 50 #If using BERT, this will dynamically be changed to match bert_size i.e. this parameter will only be evaulated if not using bert
-  gat_num_heads: 1
-  qa_init: True
-  vocab_size: None
-  alpha: 0.2
-  gat_out_size: 100
   use_bert: True
   bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768
+  vocab_size: None #Amana state embeddings
+  embedding_size: 50 #Amana state
+  num_hidden: 100
+  out_features: 100
+  num_heads: 1
+  alpha: 0.2
+  dropout_ratio: 0.2
+  qa_init: True #Amana
   transformer: 
-    hidden_size: 3 #TODO combine
-    num_types: None
+    hidden_size: 100 #TODO combine
+    num_types: 2
     num_layers: 1
     num_heads: None
     transformer_heads: 1

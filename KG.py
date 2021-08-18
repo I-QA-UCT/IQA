@@ -277,9 +277,9 @@ class SupplementaryKG(object):
         self.state_ent_emb_bert(list(self.entities.keys()))
 
         if self.use_cuda:
-            data = Data(x=self.state_ent_emb, edge_index=edge_index)
+            data = Data(x=self.state_ent_emb.weight, edge_index=edge_index).cuda()
         else:
-            data = Data(x=self.state_ent_emb, edge_index=edge_index)
+            data = Data(x=self.state_ent_emb.weight, edge_index=edge_index)
 
         return data
 
@@ -312,7 +312,7 @@ class SupplementaryKG(object):
     def step(self, visible_state, prev_action=None):
         self.update_state(visible_state, prev_action)
         if self.use_bert:
-            self.graph_state = self.get_state_representation_bert()
+            self.graph_state_rep = self.get_state_representation_bert()
         else:
             if self.use_cuda:
                 self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
