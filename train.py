@@ -342,7 +342,7 @@ def train(data_path,log_to_wandb):
                     else:
                         encoded_action = torch.stack(all_action_inputs[b])
 
-                    intrinsic_reward = agent.curiosity_module.scaling_factor*agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
+                    intrinsic_reward = agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
                                     
                     intrinsic_rewards.append(intrinsic_reward)
 
