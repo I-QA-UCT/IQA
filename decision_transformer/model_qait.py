@@ -233,7 +233,7 @@ class QuestionAnsweringBert(nn.Module):
     def __init__(self):
         super(QuestionAnsweringBert,self).__init__()
 
-        self.bert = BertForMultipleChoice.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+        self.bert = BertForMultipleChoice.from_pretrained('bert-base-uncased')
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
     
     def predict(self, question, passage):
@@ -272,16 +272,19 @@ class QuestionAnsweringBert(nn.Module):
     def forward(self, prompts, choices, questions):#questions, passages):
 
         bert_output = []
-
+        # [CLS] passage [SEP] question [SEP] option 1 [SEP]
+        # [CLS] passage [SEP] question [SEP] option ... [SEP]
+        # [CLS] passage [SEP] question [SEP] option N [SEP]
         for prompt, question in zip(prompts, questions):
-            encoding = self.tokenizer( ["[CLS] "+prompt + " [SEP] " + question + " [SEP]"]*len(choices) ,choices, return_tensors='pt', padding=True)
+            concat_prompt = ["[CLS] "+prompt + " [SEP] " + question + " [SEP]"]
+            encoding = self.tokenizer( concat_prompt*len(choices) ,choices, return_tensors='pt', padding=True)
             output = self.bert(**{k: v.unsqueeze(0) for k,v in encoding.items()})
             bert_output.append(output["logits"])
             
             # if answers:
             #     loss += output["loss"]
 
-        return bert_output
+        return torch.stack(bert_output).squeeze(0)
 
 #  prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
 #  choice0 = "It is eaten with a fork and a knife."

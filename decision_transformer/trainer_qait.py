@@ -191,13 +191,13 @@ class QuestionAnsweringDataLoader:
             choices = list(encodings.keys())
 
 
-            prompts, questions, answers = [], [], [0]*vocab_size
+            prompts, questions, answers = [], [], []
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
                 episode = json.loads(sample_entry)
                 questions.append(episode["question"])
-                answers[encodings[episode["answer"]]] = 1
+                answers.append(encodings[episode["answer"]])
 
                 prompt = []
                 for game_step in episode["steps"]:
@@ -206,7 +206,7 @@ class QuestionAnsweringDataLoader:
                 prompts.append(" ".join(prompt))
                 if episode_no % self.batch_size == 0:
                     yield prompts, choices, questions, answers
-                    prompts, questions, answers = [], [], [0]*vocab_size
+                    prompts, questions, answers = [], [], []
 
 class QuestionAnsweringTrainer:
 
@@ -217,12 +217,12 @@ class QuestionAnsweringTrainer:
         self.loss_fn = loss_fn
     
     def train(self):
-        
-        for prompts, choices, questions,answers in self.dataloader:
+
+        for prompts, choices , questions, answers in self.dataloader:
 
             output = self.model.forward(prompts, choices, questions)
 
-            loss = self.loss_fn(output,answers)
+            loss = self.loss_fn(output,torch.tensor(answers))
 
             self.optimizer.zero_grad()
             loss.backward()
