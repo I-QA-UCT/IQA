@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizer, BertForQuestionAnswering, BertForMultipleChoice
+from transformers import BertTokenizer, BertForMultipleChoice, DistilBertTokenizer ,DistilBertForMultipleChoice
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -65,22 +65,22 @@ class DecisionTransformer(nn.Module):
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
-        if answer_question:
-            self.predict_answer = nn.Sequential(
-                *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
-            )
-        else:
-            self.predict_action = nn.Sequential(
-                *([nn.Linear(hidden_size, self.vocab_size)]+ ([nn.Tanh()] if action_tanh else []))
-            )
+        # if answer_question:
+        self.predict_answer = nn.Sequential(
+            *([nn.Linear(hidden_size, self.vocab_size)])
+        )
+        # else:
+        self.predict_action = nn.Sequential(
+            *([nn.Linear(hidden_size, self.vocab_size)])
+        )
 
-            self.predict_modifer = nn.Sequential(
-                *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
-            )
+        self.predict_modifer = nn.Sequential(
+            *([nn.Linear(hidden_size, self.vocab_size)])
+        )
 
-            self.predict_object = nn.Sequential(
-                *([nn.Linear(hidden_size, self.vocab_size)] + ([nn.Tanh()] if action_tanh else []))
-            )
+        self.predict_object = nn.Sequential(
+            *([nn.Linear(hidden_size, self.vocab_size)])
+        )
         
     def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None):
 
@@ -176,14 +176,12 @@ class DecisionTransformer(nn.Module):
         """
         encoded_returns, encoded_states, encoded_actions = encoded_sequence[:,0],encoded_sequence[:,1],encoded_sequence[:,2]
         
-        if self.answer_question:
-            return self.predict_answer(encoded_states) # predict answer
-
+        answer_preds = self.predict_answer(encoded_states) # predict answer
         action_preds = self.predict_action(encoded_states)  # predict next action given state
         modifier_preds = self.predict_modifer(encoded_states)  # predict next action given state
         object_preds = self.predict_object(encoded_states)  # predict next action given state
 
-        return action_preds, modifier_preds, object_preds
+        return action_preds, modifier_preds, object_preds, answer_preds
 
 
     def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
@@ -218,73 +216,37 @@ class DecisionTransformer(nn.Module):
             ).to(dtype=torch.long)
         else:
             attention_mask = None
-
-        if self.answer_question:
-            answer_pred = self.forward(
-            states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
-            return torch.argmax(answer_pred[0,-1])
             
-        action_preds, modifier_preds, object_preds = self.forward(
+        action_preds, modifier_preds, object_preds, answer_pred = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
 
-        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1])
+        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1]), torch.argmax(answer_pred[0,-1])
 
 class QuestionAnsweringBert(nn.Module):
     def __init__(self):
         super(QuestionAnsweringBert,self).__init__()
 
-        self.bert = BertForMultipleChoice.from_pretrained('bert-base-uncased')
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.bert = DistilBertForMultipleChoice.from_pretrained('distilbert-base-uncased')
+        self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     
-    def predict(self, question, passage):
-        
-        encoding = self.tokenizer.encode(question,passage)
-
-        seperation_index = encoding.index(self.tokenizer.sep_token_id)
-        num_seg_a = seperation_index + 1
-        num_seg_b = len(encoding) - num_seg_a
-        segment_ids = [0]*num_seg_a + [1]*num_seg_b
-
-        output = self.bert(torch.tensor([encoding]), # The tokens representing our input text.
-                                    token_type_ids=torch.tensor([segment_ids])) # The segment IDs to differentiate question from answer_text
-        answer_start = torch.argmax(output["start_logits"])
-        answer_end = torch.argmax(output["end_logits"])
-
-        # Get the string versions of the input tokens.
-        tokens = self.tokenizer.convert_ids_to_tokens(encoding)
-
-        # Start with the first token.
-        answer = tokens[answer_start]
-
-        # Select the remaining answer tokens and join them with whitespace.
-        for i in range(answer_start + 1, answer_end + 1):
-            
-            # If it's a subword token, then recombine it with the previous token.
-            if tokens[i][0:2] == '##':
-                answer += tokens[i][2:]
-            
-            # Otherwise, add a space then the token.
-            else:
-                answer += ' ' + tokens[i]
-
-        return answer
-
-    def forward(self, prompts, choices, questions):#questions, passages):
+    def forward(self, prompts, choices, questions, answers=None):#questions, passages):
 
         bert_output = []
-        # [CLS] passage [SEP] question [SEP] option 1 [SEP]
-        # [CLS] passage [SEP] question [SEP] option ... [SEP]
-        # [CLS] passage [SEP] question [SEP] option N [SEP]
-        for prompt, question in zip(prompts, questions):
-            concat_prompt = ["[CLS] "+prompt + " [SEP] " + question + " [SEP]"]
-            encoding = self.tokenizer( concat_prompt*len(choices) ,choices, return_tensors='pt', padding=True)
-            output = self.bert(**{k: v.unsqueeze(0) for k,v in encoding.items()})
-            bert_output.append(output["logits"])
+        for prompt, question, answer in zip(prompts, questions, answers):
+            labels = torch.tensor(answer).unsqueeze(0)
+            encode_prompt =  self.tokenizer( prompt, question, truncation="only_first", max_length=500)
+            encoding = self.tokenizer([self.tokenizer.decode(encode_prompt["input_ids"])]*len(choices), choices, return_tensors='pt', padding=True)
+            output = self.bert(**{k: v.unsqueeze(0) for k,v in encoding.items()},labels=labels)
+            # bert_output.append(output["logits"])
             
             # if answers:
             #     loss += output["loss"]
 
-        return torch.stack(bert_output).squeeze(0)
+            
+
+        return output["logits"], output["loss"] if answers else None
+        
+
 
 #  prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
 #  choice0 = "It is eaten with a fork and a knife."

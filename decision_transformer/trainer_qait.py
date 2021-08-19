@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
 
 from transformers import BertTokenizer
@@ -175,11 +175,38 @@ class Trainer:
 
         return loss.detach().cpu().item()
 
-class QuestionAnsweringDataLoader:
+class QuestionAnsweringDataLoader(Dataset):
+
     def __init__(self,data="random_rollout.json",batch_size=4):
         self.offline_rl_data_filename = RELATIVE_PATH + data
         self.word_encodings_filename = WORD_ENCODINGS
         self.batch_size = batch_size
+        with open(self.offline_rl_data_filename) as offline_rl_data:
+            
+            self.dataset = []
+
+            prompts, questions, answers = [], [], []
+
+            for episode_no,sample_entry in enumerate(offline_rl_data):
+
+                episode = json.loads(sample_entry)
+                questions.append(episode["question"])
+                answers.append(episode["answer"])
+
+                prompt = []
+                for game_step in episode["steps"]:
+                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
+                
+                # prompts.append(" ".join(prompt))
+                # if episode_no % self.batch_size == 0:
+                self.dataset.append((" ".join(prompt), episode["question"], episode["answer"]))
+
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        return self.dataset[idx]
 
         
     def __iter__(self):
@@ -197,39 +224,48 @@ class QuestionAnsweringDataLoader:
 
                 episode = json.loads(sample_entry)
                 questions.append(episode["question"])
-                answers.append(encodings[episode["answer"]])
+                answers.append(episode["answer"])
 
                 prompt = []
                 for game_step in episode["steps"]:
                     prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
                 
-                prompts.append(" ".join(prompt))
-                if episode_no % self.batch_size == 0:
-                    yield prompts, choices, questions, answers
-                    prompts, questions, answers = [], [], []
+                # prompts.append(" ".join(prompt))
+                # if episode_no % self.batch_size == 0:
+                yield " ".join(prompt), choices, episode["question"], episode["answer"]
+
+                # yield prompts, choices, questions, answers
+                    # prompts, questions, answers = [], [], []
 
 class QuestionAnsweringTrainer:
 
     def __init__(self,model,optimizer,loss_fn,data="random_rollouts.json", batch_size=4):
-        self.dataloader = QuestionAnsweringDataLoader(data=data,batch_size=batch_size)
+        self.dataset = QuestionAnsweringDataLoader(data=data,batch_size=batch_size)
+        self.dataloader = DataLoader(self.dataset, batch_size=batch_size,shuffle=False, num_workers=1)
         self.model = model
         self.optimizer = optimizer
         self.loss_fn = loss_fn
     
     def train(self):
 
-        for prompts, choices , questions, answers in self.dataloader:
+        choices = ["kitchen", "pantry", "livingroom", "bathroom", "bedroom",
+                  "backyard", "garden", "shed", "driveway", "street",
+                  "corridor", "supermarket"]
+        choice2id = {v:i for i,v in enumerate(choices)} #c2i["bathroom"] = 3
 
-            output = self.model.forward(prompts, choices, questions)
+        for batch in self.dataloader:
 
-            loss = self.loss_fn(output,torch.tensor(answers))
+            prompts, questions, answers = batch
+            output, loss = self.model.forward(prompts, choices, questions, [choice2id[answer] for answer in answers])
+            print(loss)
+            # loss = self.loss_fn(output,torch.tensor([choice2id[answer] for answer in answers]))
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
-            self.optimizer.step()
-            print(f"Loss: {loss.detach().cpu().item()}")
-            
+            # self.optimizer.zero_grad()
+            # loss.backward()
+            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
+            # self.optimizer.step()
+            # print(f"Loss: {loss.detach().cpu().item()}")
+
 
 
 class SequenceTrainer(Trainer):
