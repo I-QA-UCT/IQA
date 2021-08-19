@@ -400,16 +400,22 @@ class StateNetwork(torch.nn.Module):
 
         return entities, vocab
 
-    def forward(self, graph_rep):
+    def forward(self, graph_rep, batch_num_nodes):
         
         if self.use_bert:
-            # data = graph_rep
-            # self.state_ent_emb_bert(state_ents)
-            x = self.GAT(graph_rep)#.view(batch_size, -1)
-            
-            batch, masks = self.transformer.pad([x])
-            out = self.transformer.encoder(src=batch, src_key_padding_mask=masks)
-            print(out.size())
+            x = self.GAT(graph_rep)
+
+            count = 0
+            graph_list = []
+            for num in batch_num_nodes:
+                graph = x[count:count+num,:]
+                graph_list.append(graph)
+                count += num
+
+            batch, masks = self.transformer.pad(graph_list)
+            out = self.transformer.encoder(src=batch, src_key_padding_mask=masks).permute(1,0,2)
+            out = out[:,-1,:]
+
             return out
         else:
             _, adj = graph_rep

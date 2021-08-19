@@ -10,6 +10,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from torch_geometric.data import DataLoader
+
 import command_generation_memory
 import qa_memory
 from model import DQN, StateNetwork
@@ -476,7 +478,7 @@ class Agent:
             local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
     
             self.state.step(self.get_state_strings(infos)[0], commands[0])
-            gat_out = self.GAT(self.state.graph_state_rep)
+            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
 
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
@@ -532,7 +534,7 @@ class Agent:
             # there is epsilon of chance to generate random commands
 
             self.state.step(self.get_state_strings(infos)[0], commands[0])
-            gat_out = self.GAT(self.state.graph_state_rep)
+            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
 
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
@@ -574,15 +576,26 @@ class Agent:
         if data is None:
             return None
 
+        
         adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         
-        adj_mat_batch = torch.stack(adj_mat_list)
-        next_adj_mat_batch = torch.stack(next_adj_mat_list)
-        gat_out = self.GAT((None,adj_mat_batch))
-        next_gat_out = self.GAT((None,next_adj_mat_batch))
-        
-        batch_size = len(actual_n_list)
+        temp1 = []
+        temp2 = []
+        for adj, next_adj in zip(adj_mat_list, next_adj_mat_list):
+            temp1.append(len(adj.x))
+            temp2.append(len(next_adj.x))
 
+        batch_size = len(actual_n_list)
+        
+        loader = DataLoader(adj_mat_list, batch_size=batch_size)
+        batch = next(iter(loader))
+        gat_out = self.GAT(batch, temp1)
+
+        next_loader = DataLoader(next_adj_mat_list, batch_size=batch_size)
+        next_batch = next(iter(next_loader))
+
+        next_gat_out = self.GAT(next_batch,temp2)
+        
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
         input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
         next_input_observation, next_input_observation_char, _ =  self.get_agent_inputs(next_obs_list)

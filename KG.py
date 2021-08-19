@@ -244,7 +244,7 @@ class SupplementaryKG(object):
     
     def state_ent_emb_bert(self, entities):
 
-        print(entities)
+        # print(entities)
         # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
         # entities = [red,red_hot,pepper, hot_pepper]
         num_current = len(self.embeds)

@@ -218,7 +218,7 @@ def train(data_path):
                 commands_per_step[i].append(commands[i])
 
 
-            _, adj_mat = agent.state.graph_state_rep
+            adj_mat = agent.state.graph_state_rep
             replay_info = [adj_mat, observation_strings_w_history, questions, possible_words] + replay_info
             # get the real admissible commands from environment i.e the true valid commands for the game step
             admissible_commands = [set(item) - set(["look", "wait", "inventory"]) for item in infos["admissible_commands"]]
@@ -342,7 +342,7 @@ def train(data_path):
                 agent.command_generation_replay_memory.push(is_prior, batch_adj_mat, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
-
+        
         # for printing
         r_qa = np.mean(qa_reward_np)
         r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
