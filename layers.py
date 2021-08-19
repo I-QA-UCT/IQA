@@ -572,26 +572,14 @@ class GATlayer(torch.nn.Module):
 
 class Transformer(torch.nn.Module):
 
-    def __init__(self, hidden_size, num_types, num_layers, num_heads, transformer_heads, dropout, intermediate_fac=2):
+    def __init__(self, hidden_size, num_layers, transformer_heads, dropout, intermediate_fac=2):
         super().__init__()
-        self.num_heads = num_heads
-        self.num_types = num_types
         self.hidden_size = hidden_size
 
         encoder_layer = TransformerEncoderLayer(self.hidden_size, transformer_heads,
                                                 self.hidden_size * intermediate_fac, dropout, 'relu')
         encoder_norm = LayerNorm(self.hidden_size)
         self.encoder = TransformerEncoder(encoder_layer, num_layers, encoder_norm)
-
-    # @staticmethod
-    # def get_type_ids(type, length, type_map):
-    #     type_id = type_map[type]
-    #     type_ids = torch.tensor([type_id for _ in range(length)]).long()#.cuda()
-    #     return type_ids
-
-    # def get_type_tensor(self, type, length, type_map):
-    #     ids = Transformer.get_type_ids(type, length, type_map)
-    #     return self.type_embedder(ids).view(1, -1, self.hidden_size)
 
     @staticmethod
     def pad(vecs):

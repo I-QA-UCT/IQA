@@ -27,10 +27,10 @@ evaluate:
 
 checkpoint:
   save_checkpoint: True
-  save_frequency: 1000  # episode
-  experiment_tag: 'DQN_Fixed_1_pretrained_embeddings_2'
+  save_frequency: 20  # episode
+  experiment_tag: 'DQN_Fixed_1_pretrained_embeddings_test'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: ''  # if you want to load from prev experiment
+  load_from_tag: 'DQN_Fixed_1_pretrained_embeddings_test'  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9
@@ -88,16 +88,13 @@ gat:
   vocab_size: None #Amana state embeddings
   embedding_size: 50 #Amana state
   num_hidden: 100
-  out_features: 100
+  out_features: 100 #For multi-head
   num_heads: 1
   alpha: 0.2
-  dropout_ratio: 0.2
+  dropout: 0.2
   qa_init: True #Amana
   transformer: 
-    hidden_size: 100 #TODO combine
-    num_types: 2
     num_layers: 1
-    num_heads: None
     transformer_heads: 1
     dropout: 0.2
 

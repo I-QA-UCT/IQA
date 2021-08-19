@@ -63,11 +63,15 @@ def train(data_path):
     # load model from checkpoint
     if agent.load_pretrained:
         if os.path.exists(output_dir + "/" + agent.experiment_tag + "_model.pt"):
-            agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
-            agent.update_target_net()
+            # agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
+            # agent.update_target_net()
+            agent = torch.load(output_dir + "/" + agent.experiment_tag + "_model.pt")
+            agent.eval()
         elif os.path.exists(data_dir + "/" + agent.load_from_tag + ".pt"):
-            agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
-            agent.update_target_net()
+            # agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
+            # agent.update_target_net()
+            agent = torch.load(data_dir + "/" + agent.load_from_tag + ".pt")
+            agent.eval()
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
@@ -383,12 +387,17 @@ def train(data_path):
             # if run eval, then save model by eval accucacy
             if eval_qa_reward + eval_sufficient_info_reward > best_sum_reward_so_far:
                 best_sum_reward_so_far = eval_qa_reward + eval_sufficient_info_reward
-                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
+                # agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
+                path = output_dir + "/" + agent.experiment_tag + "_model.pt"
+                torch.save(agent, path)
+
         # save model
         elif agent.save_checkpoint:
             if running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg() > best_sum_reward_so_far:
                 best_sum_reward_so_far = running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg()
-                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
+                # agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
+                path = output_dir + "/" + agent.experiment_tag + "_model.pt"
+                torch.save(agent, path)
 
        
         # write accucacies down into file

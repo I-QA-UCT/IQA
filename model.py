@@ -324,12 +324,8 @@ class StateNetwork(torch.nn.Module):
             else:
                 features = 512 #Small or medium
 
-            self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout_ratio'], alpha=params['alpha'])
-            # self.bert = BertEmbedder(self.bert_size, [])
-            # self.vocab_kge, self.vocab = self.load_files()
-            # self.state_ent_emb = None
-            # self.embeds = []
-            self.transformer = Transformer(hidden_size=params['transformer']['hidden_size'], num_types=params['transformer']['num_types'], num_layers=params['transformer']['num_layers'], num_heads=params['transformer']['num_heads'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
+            self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'])
+            self.transformer = Transformer(hidden_size=params['num_hidden'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
         else:
             self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
             if params['qa_init']:
@@ -339,24 +335,7 @@ class StateNetwork(torch.nn.Module):
             self.vocab_kge, self.vocab = self.load_files()
             self.init_state_ent_emb()
             self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, params['gat_out_size']) #TODO:Dynamic sizing here
-
-    # def state_ent_emb_bert(self, entities):
-
-    #     print(entities)
-    #     # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
-    #     # entities = [red,red_hot,pepper, hot_pepper]
-    #     num_current = len(self.embeds)
-    #     for i in range(num_current, len(entities)):
-    #         graph_node_text = entities[i].replace('_', ' ')
-    #         node_embedding = self.bert.embed(graph_node_text).squeeze(0) #TODO: Why not? Check returned size
-
-    #         #Summarizer
-    #         node_embedding= node_embedding.mean(dim=0) 
-    #         self.embeds.append(node_embedding)
-        
-        
-    #     self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
-                    
+                  
     def init_state_ent_emb(self):
         embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
         for i in range(len(self.vocab_kge)):
@@ -425,59 +404,3 @@ class StateNetwork(torch.nn.Module):
             x = self.GAT(self.state_ent_emb.weight, adj).view(batch_size, -1)
             out = self.fc1(x)
         return out
-
-
-# class GAT(torch.nn.Module):
-#     def __init__(self, in_channels: int, hidden_channels: int, num_layers: int, dropout: float = 0.0, act: Optional[Callable] = ReLU(inplace=True), jk: str = 'last', **kwargs):
-#         super().__init__()
-#         self.in_channels = in_channels
-#         self.hidden_channels = hidden_channels
-#         self.out_channels = hidden_channels
-#         if jk == 'cat':
-#             self.out_channels = num_layers * hidden_channels
-#         self.num_layers = num_layers
-#         self.dropout = dropout
-#         self.act = act
-
-#         self.convs = ModuleList()
-
-#         self.jk = None
-#         if jk != 'last':
-#             self.jk = JumpingKnowledge(jk, hidden_channels, num_layers)
-
-#         if 'concat' in kwargs:
-#                 del kwargs['concat']
-
-#         if 'heads' in kwargs:
-#             assert hidden_channels % kwargs['heads'] == 0
-#         out_channels = hidden_channels // kwargs.get('heads', 1)
-
-#         self.convs.append(GATConv(in_channels, out_channels, dropout=dropout, **kwargs))
-#         for _ in range(1, num_layers):
-#             self.convs.append(GATConv(hidden_channels, out_channels, **kwargs))
-
-#     def reset_parameters(self):
-#         for conv in self.convs:
-#             conv.reset_parameters()
-#         for norm in self.norms or []:
-#             norm.reset_parameters()
-#         if self.jk is not None:
-#             self.jk.reset_parameters()
-
-#     def forward(self, x: Tensor, edge_index: Adj, *args, **kwargs) -> Tensor:
-#         xs: List[Tensor] = []
-#         for i in range(self.num_layers):
-#             x = self.convs[i](x, edge_index, *args, **kwargs)
-#             if self.norms is not None:
-#                 x = self.norms[i](x)
-#             if self.act is not None:
-#                 x = self.act(x)
-#             x = F.dropout(x, p=self.dropout, training=self.training)
-#             if self.jk is not None:
-#                 xs.append(x)
-#         return x if self.jk is None else self.jk(xs)
-
-#     def __repr__(self) -> str:
-#         return (f'{self.__class__.__name__}({self.in_channels}, '
-#                 f'{self.out_channels}, num_layers={self.num_layers})')
-

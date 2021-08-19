@@ -239,11 +239,10 @@ class SupplementaryKG(object):
 
         return
     
-    def state_ent_emb_bert(self, entities):
+    def state_ent_emb_bert(self):
 
-        # print(entities)
-        # self.embeds = [embedding:red, embedding:red_hot, embedding:pepper]
-        # entities = [red,red_hot,pepper, hot_pepper]
+        entities = list(self.entities.keys())
+        print(entities)
         num_current = len(self.embeds)
         for i in range(num_current, len(entities)):
             graph_node_text = entities[i].replace('_', ' ')
@@ -271,7 +270,7 @@ class SupplementaryKG(object):
 
         edge_index = torch.tensor(self.adj_matrix, dtype=torch.long)#.cuda()
 
-        self.state_ent_emb_bert(list(self.entities.keys()))
+        self.state_ent_emb_bert()
 
         if self.use_cuda:
             data = Data(x=self.state_ent_emb.weight, edge_index=edge_index).cuda()
