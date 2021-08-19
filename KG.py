@@ -101,9 +101,8 @@ class SupplementaryKG(object):
 
     def update_state(self, visible_state, prev_action=None):
 
-        # print(prev_action)
-        # if prev_action == 'restart':
-        #     self.graph_state.clear()
+        if prev_action == 'restart':
+            self.graph_state.clear()
 
         #Format visible state, and set to self
         visible_state = visible_state.split('-')
@@ -199,8 +198,6 @@ class SupplementaryKG(object):
         edges = list(self.graph_state.edges)
 
         # print("add", add_rules)
-
-        
 
         #Remove edges from KG that are no longer needed
         for edge in edges:
@@ -305,8 +302,6 @@ class SupplementaryKG(object):
             result.append(self.vocab_er['entity'][target])
 
         return list(set(result))
-
-  
 
     #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
