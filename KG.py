@@ -22,10 +22,8 @@ class SupplementaryKG(object):
 
     def __init__(self, use_cuda, use_bert, bert_size):
     
-        
         self.use_bert = use_bert
         self.vocab, self.vocab_er = self.load_files()
-        # self.vocab, self.actions, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
         self.room = "" #Room at the centre of KG
         
@@ -67,30 +65,10 @@ class SupplementaryKG(object):
             
             return vocab, entity_relation_dict
 
-    # def load_files(self):
-    #     vocab = {}
-    #     i = 0
-    #     with open('vocabularies/word_vocab.txt', 'r') as file_output:
-    #         for i, line in enumerate(file_output):
-    #             vocab[line.strip()] = i
-
-    #     actions = eval(open('act2id.txt', 'r').readline())
-
-    #     entities = {}
-    #     with open("entity2id.tsv", 'r') as file_output:
-    #         for line in file_output:
-    #             entity, entity_id = line.split('\t')
-    #             entities[entity.strip()] = int(entity_id.strip())
-
-    #     relations = {}
-    #     with open("relation2id.tsv", 'r') as file_output:
-    #         for line in file_output:
-    #             relation, relation_id = line.split('\t')
-    #             relations[relation.strip()] = int(relation_id.strip())
-        
-    #     entity_relation_dict = {'entity': entities, 'relation': relations}
-        
-    #     return vocab, actions, entity_relation_dict
+    def set_entities(self, path):
+        file_in = open(path, 'r')
+        self.entities = eval(file_in.readline())
+        self.entity_nums = len(self.entities.keys())
 
     def visualize(self):
         pos = nx.spring_layout(self.graph_state)
@@ -242,7 +220,6 @@ class SupplementaryKG(object):
     def state_ent_emb_bert(self):
 
         entities = list(self.entities.keys())
-        print(entities)
         num_current = len(self.embeds)
         for i in range(num_current, len(entities)):
             graph_node_text = entities[i].replace('_', ' ')
@@ -302,7 +279,6 @@ class SupplementaryKG(object):
 
         return list(set(result))
 
-    #TODO: Look into action pruning
     def step(self, visible_state, prev_action=None):
         self.update_state(visible_state, prev_action)
         if self.use_bert:

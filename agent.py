@@ -47,20 +47,20 @@ class Agent:
             self.online_net.cuda()
             self.target_net.cuda()
 
-        self.naozi = ObservationPool(capacity=self.naozi_capacity)
-        # optimizer
-        self.optimizer = torch.optim.Adam(self.online_net.parameters(), lr=self.config['training']['optimizer']['learning_rate'])
-        self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
-        
         params = self.config['gat']
         self.state = KG.SupplementaryKG(self.config['general']['use_cuda'],self.config['gat']['use_bert'],self.config['gat']['bert_size'])
         params['vocab_size'] = len(self.state.vocab)
         params['use_cuda'] = self.config['general']['use_cuda']
 
         self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        self.GAT = StateNetwork(params=params,  embeddings=self.action_emb.weight)        
+        self.GAT = StateNetwork(params=params,  embeddings=self.action_emb.weight)
+
+        self.naozi = ObservationPool(capacity=self.naozi_capacity)
+        # optimizer
+        self.optimizer = torch.optim.Adam(list(self.online_net.parameters())+list(self.GAT.parameters()), lr=self.config['training']['optimizer']['learning_rate'])
+        self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
         
-        # self.GAT = StateNetwork(action_set = self.state.actions, params=params,  embeddings=self.action_emb.weight)
+        
 
         
 
@@ -188,6 +188,7 @@ class Agent:
         """
         self.mode = "train"
         self.online_net.train()
+        self.GAT.train()
 
     def eval(self):
         """
@@ -195,6 +196,7 @@ class Agent:
         """
         self.mode = "eval"
         self.online_net.eval()
+        self.GAT.eval()
 
     def update_target_net(self):
         """
@@ -220,12 +222,21 @@ class Agent:
             load_from: File name of the pretrained model checkpoint.
         """
         print("loading model from %s\n" % (load_from))
+        # try:
+        #     if self.use_cuda:
+        #         state_dict = torch.load(load_from)
+        #     else:
+        #         state_dict = torch.load(load_from, map_location='cpu')
+        #     self.online_net.load_state_dict(state_dict)
+        # except:
+        #     print("Failed to load checkpoint...")
         try:
             if self.use_cuda:
-                state_dict = torch.load(load_from)
+                checkpoint = torch.load(load_from)
             else:
-                state_dict = torch.load(load_from, map_location='cpu')
-            self.online_net.load_state_dict(state_dict)
+                checkpoint = torch.load(load_from, map_location='cpu')
+            self.online_net.load_state_dict(checkpoint['online_net'])
+            self.GAT.load_state_dict(checkpoint['gat'])
         except:
             print("Failed to load checkpoint...")
 
@@ -233,7 +244,8 @@ class Agent:
         """
         Save pytorch agent model
         """
-        torch.save(self.online_net.state_dict(), save_to)
+        # torch.save(self.online_net.state_dict(), save_to)
+        torch.save({'online_net' : self.online_net.state_dict(), 'gat': self.GAT.state_dict()}, save_to)
         print("Saved checkpoint to %s..." % (save_to))
 
     def init(self, obs, infos):

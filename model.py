@@ -334,7 +334,7 @@ class StateNetwork(torch.nn.Module):
                 self.pretrained_embeds = embeddings.new_tensor(embeddings.data)
             self.vocab_kge, self.vocab = self.load_files()
             self.init_state_ent_emb()
-            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'] * 1, params['gat_out_size']) #TODO:Dynamic sizing here
+            self.fc1 = torch.nn.Linear(self.state_ent_emb.weight.size()[0] * params['gat_hidden_size'], params['gat_out_size']) #TODO:Dynamic sizing here
                   
     def init_state_ent_emb(self):
         embeddings = torch.zeros((len(self.vocab_kge), self.params['embedding_size']))
