@@ -190,8 +190,6 @@ class QuestionAnsweringDataLoader(Dataset):
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
                 episode = json.loads(sample_entry)
-                questions.append(episode["question"])
-                answers.append(episode["answer"])
 
                 prompt = []
                 for game_step in episode["steps"]:
@@ -237,18 +235,18 @@ class QuestionAnsweringDataLoader(Dataset):
 
 class QuestionAnsweringTrainer:
 
-    def __init__(self,model, optimizer, epochs=100, steps_per_epoch=10, batch_size=4,data="dqn_loc.json" ,**kwargs):
+    def __init__(self,model, optimizer, loss_fn ,epochs=100, steps_per_epoch=10, batch_size=4,data="dqn_loc.json" ,**kwargs):
         self.dataset = QuestionAnsweringDataLoader(data)
         self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, **kwargs)
         self.model = model
         self.optimizer = optimizer
-
+        self.loss_fn = loss_fn
         self.epochs = epochs
         self.steps = steps_per_epoch
 
         self.choices = ["kitchen", "pantry", "livingroom", "bathroom", "bedroom",
                   "backyard", "garden", "shed", "driveway", "street",
-                  "corridor", "supermarket"]
+                  "corridor", "supermarket","inventory"]
         self.choice2id = {v:i for i,v in enumerate(self.choices)}
 
     
@@ -257,15 +255,18 @@ class QuestionAnsweringTrainer:
         for batch in self.dataloader:
 
             prompts, questions, answers = batch
-            output, loss = self.model.forward(prompts, self.choices, questions, [self.choice2id[answer] for answer in answers])
+            output = self.model.forward(prompts, self.choices, questions)
+            
+            labels = torch.tensor([self.choice2id[answer] for answer in answers]).to(self.model.device)
+
+            loss = self.loss_fn(output,labels)
 
             self.optimizer.zero_grad()
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
-        
+
             loss += loss.detach().cpu().item()
-        
         return loss
 
     def train(self):
@@ -332,6 +333,6 @@ if __name__ == "__main__":
         lr=1e-4,
         weight_decay=1e-4,
     )
-    trainer = QuestionAnsweringTrainer(model,optimizer, batch_size=1, num_workers=1, data="random_rollouts.json",)
+    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(), batch_size=1, num_workers=1, data="random_rollouts.json",)
 
     trainer.train()

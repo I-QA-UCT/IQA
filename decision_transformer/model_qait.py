@@ -230,31 +230,21 @@ class QuestionAnsweringBert(nn.Module):
         self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.to(self.device)
-    
-    def forward(self, prompts, choices, questions, answers=None):#questions, passages):
 
-        outputs, loss = [], []
-        for prompt, question, answer in zip(prompts, questions, answers):
-            labels = torch.tensor(answer).unsqueeze(0).to(self.device)
-            encode_prompt =  self.tokenizer( prompt, question, truncation="only_first", max_length=500)
-            encoding = self.tokenizer([self.tokenizer.decode(encode_prompt["input_ids"])]*len(choices), choices, return_tensors='pt', padding=True)
-            output = self.bert(**{k: v.unsqueeze(0).to(self.device) for k,v in encoding.items()},labels=labels)
-            loss.append(output["loss"])# bert_output.append(output["logits"])
-            outputs.append(output["logits"])
-            # if answers:
-            #     loss += output["loss"]
+        self.context_window = 512
 
-            
-
-        return outputs, sum(loss) if answers else None
+    def forward(self, prompts, choices, questions):#questions, passages):
         
+        batch_size = len(prompts)
+        outputs = []
+        for prompt,question in zip(prompts,questions):
+            prompt_question = "[CLS] " + prompt + " [SEP] " + question
+            encoding = self.tokenizer([prompt_question]*len(choices), choices,truncation="only_first", max_length=self.context_window, padding='max_length',return_tensors='pt')
+            output = self.bert(**{k: v.unsqueeze(0).to(self.device) for k,v in encoding.items()})
+            outputs.append(output["logits"])
 
-
-#  prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-#  choice0 = "It is eaten with a fork and a knife."
-#  choice1 = "It is eaten while held in the hand."
-#  labels = torch.tensor(0).unsqueeze(0)  # choice0 is correct (according to Wikipedia ;)), batch size 1
-
+        return torch.stack(outputs).squeeze(0)
+        
 class Trajectory(object):
 
     def __init__(self):
