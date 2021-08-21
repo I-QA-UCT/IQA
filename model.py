@@ -746,10 +746,10 @@ class ICM(torch.nn.Module):
         with torch.no_grad():
             if not self.use_inverse_model:
                 intrinsic_reward = self.scaling_factor * \
-                    self.get_forward_loss(state, action, next_state).detach()
+                    F.relu(self.get_forward_loss(state, action, next_state)).detach()
             else:
                 intrinsic_reward = self.scaling_factor * \
-                    self.get_inverse_loss(state, action, next_state).detach()
+                    F.relu(self.get_inverse_loss(state, action, next_state)).detach()
             
             return intrinsic_reward
 
