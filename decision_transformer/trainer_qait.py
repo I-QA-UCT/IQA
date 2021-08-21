@@ -177,10 +177,10 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
 
-    def __init__(self,data="random_rollout.json",batch_size=4):
+    def __init__(self,data):
         self.offline_rl_data_filename = RELATIVE_PATH + data
         self.word_encodings_filename = WORD_ENCODINGS
-        self.batch_size = batch_size
+
         with open(self.offline_rl_data_filename) as offline_rl_data:
             
             self.dataset = []
@@ -197,8 +197,6 @@ class QuestionAnsweringDataLoader(Dataset):
                 for game_step in episode["steps"]:
                     prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
                 
-                # prompts.append(" ".join(prompt))
-                # if episode_no % self.batch_size == 0:
                 self.dataset.append((" ".join(prompt), episode["question"], episode["answer"]))
 
 
@@ -239,32 +237,46 @@ class QuestionAnsweringDataLoader(Dataset):
 
 class QuestionAnsweringTrainer:
 
-    def __init__(self,model,optimizer,loss_fn,data="random_rollouts.json", batch_size=4):
-        self.dataset = QuestionAnsweringDataLoader(data=data,batch_size=batch_size)
-        self.dataloader = DataLoader(self.dataset, batch_size=batch_size,shuffle=False, num_workers=1)
+    def __init__(self,model, optimizer, epochs=100, steps_per_epoch=10, batch_size=4,data="dqn_loc.json" ,**kwargs):
+        self.dataset = QuestionAnsweringDataLoader(data)
+        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, **kwargs)
         self.model = model
         self.optimizer = optimizer
-        self.loss_fn = loss_fn
-    
-    def train(self):
 
-        choices = ["kitchen", "pantry", "livingroom", "bathroom", "bedroom",
+        self.epochs = epochs
+        self.steps = steps_per_epoch
+
+        self.choices = ["kitchen", "pantry", "livingroom", "bathroom", "bedroom",
                   "backyard", "garden", "shed", "driveway", "street",
                   "corridor", "supermarket"]
-        choice2id = {v:i for i,v in enumerate(choices)} #c2i["bathroom"] = 3
+        self.choice2id = {v:i for i,v in enumerate(self.choices)}
 
+    
+    def train_step(self):
+        loss = 0
         for batch in self.dataloader:
 
             prompts, questions, answers = batch
-            output, loss = self.model.forward(prompts, choices, questions, [choice2id[answer] for answer in answers])
-            print(loss)
-            # loss = self.loss_fn(output,torch.tensor([choice2id[answer] for answer in answers]))
+            output, loss = self.model.forward(prompts, self.choices, questions, [self.choice2id[answer] for answer in answers])
 
-            # self.optimizer.zero_grad()
-            # loss.backward()
+            self.optimizer.zero_grad()
+            loss.backward()
             # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
-            # self.optimizer.step()
-            # print(f"Loss: {loss.detach().cpu().item()}")
+            self.optimizer.step()
+        
+            loss += loss.detach().cpu().item()
+        
+        return loss
+
+    def train(self):
+        self.model.train()
+        train_losses = []
+        for epoch in range(self.epochs):
+            train_loss = self.train_step()
+            print(f"Epoch {epoch+1}/{self.epochs}: Train loss = {train_loss}")
+            train_losses.append(train_loss)
+            # if self.scheduler is not None:
+            #     self.scheduler.step()
 
 
 
@@ -320,6 +332,6 @@ if __name__ == "__main__":
         lr=1e-4,
         weight_decay=1e-4,
     )
-    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(),data="dqn_loc.json", batch_size=1)
+    trainer = QuestionAnsweringTrainer(model,optimizer, batch_size=1, num_workers=1, data="random_rollouts.json",)
 
     trainer.train()

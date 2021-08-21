@@ -228,23 +228,25 @@ class QuestionAnsweringBert(nn.Module):
 
         self.bert = DistilBertForMultipleChoice.from_pretrained('distilbert-base-uncased')
         self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.to(self.device)
     
     def forward(self, prompts, choices, questions, answers=None):#questions, passages):
 
-        bert_output = []
+        outputs, loss = [], []
         for prompt, question, answer in zip(prompts, questions, answers):
-            labels = torch.tensor(answer).unsqueeze(0)
+            labels = torch.tensor(answer).unsqueeze(0).to(self.device)
             encode_prompt =  self.tokenizer( prompt, question, truncation="only_first", max_length=500)
             encoding = self.tokenizer([self.tokenizer.decode(encode_prompt["input_ids"])]*len(choices), choices, return_tensors='pt', padding=True)
-            output = self.bert(**{k: v.unsqueeze(0) for k,v in encoding.items()},labels=labels)
-            # bert_output.append(output["logits"])
-            
+            output = self.bert(**{k: v.unsqueeze(0).to(self.device) for k,v in encoding.items()},labels=labels)
+            loss.append(output["loss"])# bert_output.append(output["logits"])
+            outputs.append(output["logits"])
             # if answers:
             #     loss += output["loss"]
 
             
 
-        return output["logits"], output["loss"] if answers else None
+        return outputs, sum(loss) if answers else None
         
 
 
