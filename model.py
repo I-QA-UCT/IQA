@@ -706,9 +706,7 @@ class ICM(torch.nn.Module):
 
     def get_inverse_loss(self, state, action, next_state):
         """
-
-        TODO : decide upon loss to use, generally cross entropy - how will actions be represented. Rather try decode actions and then use cross entropy or simply -log(probabiltiy of action sequence)
-        
+        # TODO Investigate the difference between mult of probs and addition of probs
         Get the loss of the inverse model.
         :param state: the current state.
         :param action: the action performed.
@@ -721,7 +719,7 @@ class ICM(torch.nn.Module):
         action_probs = torch.gather(predicted_action,-1,action)[:,0]
         modifier_probs = torch.gather(predicted_modifier,-1,action)[:,1]
         object_probs = torch.gather(predicted_object,-1,action)[:,2]
-        loss = -torch.log(action_probs*modifier_probs*object_probs)
+        loss = -torch.log(action_probs+modifier_probs+object_probs)
         return loss
 
     def get_forward_loss(self, state, action, next_state):
