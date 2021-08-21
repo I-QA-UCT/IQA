@@ -337,12 +337,12 @@ def train(data_path,log_to_wandb):
                     encoded_current_state = agent.get_match_representations(prev_state_batch,prev_state_chars_batch,batch_questions_duplicated,batch_questions_chars_duplicated)
                     
                     encoded_next_state = agent.get_match_representations(next_state_batch,next_state_chars_batch,batch_questions_duplicated,batch_questions_chars_duplicated)
-                    if not agent.curiosity_module.use_inverse_model:
+                    if not agent.online_net.curiosity_module.use_inverse_model:
                         encoded_action, _ = agent.online_net.word_embedding(torch.stack(all_action_inputs[b]))
                     else:
                         encoded_action = torch.stack(all_action_inputs[b])
 
-                    intrinsic_reward = agent.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
+                    intrinsic_reward = agent.online_net.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
                                     
                     intrinsic_rewards.append(intrinsic_reward)
 

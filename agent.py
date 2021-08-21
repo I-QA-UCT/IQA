@@ -20,8 +20,6 @@ from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
 
 
-# TODO investigate new ICM inspired by Need for semantics paper
-
 class Agent:
     def __init__(self):
         self.mode = "train"
@@ -54,24 +52,16 @@ class Agent:
                                           word_vocab=self.word_vocab,
                                           char_vocab=self.char_vocab,
                                           answer_type=self.answer_type)
+            self.online_net.train()                             
             if self.use_cuda:
                 self.online_net.cuda()
-
-        if self.icm:
-            # TRY SIMPLE
-            self.curiosity_module = ICM(self.config,self.config['model']['block_hidden_dim'],3*self.config['model']['word_embedding_size'],len(self.word2id))
-            self.curiosity_module.train()
-            if self.use_cuda:
-                self.curiosity_module.cuda()
                 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
-        if self.icm:
-            self.optimizer = torch.optim.Adam(list(self.online_net.parameters(
-        ))+list(self.curiosity_module.parameters()), lr=self.config['training']['optimizer']['learning_rate'])
-        else:
-            self.optimizer = torch.optim.Adam(self.online_net.parameters(
+    
+        self.optimizer = torch.optim.Adam(self.online_net.parameters(
         ), lr=self.config['training']['optimizer']['learning_rate'])
+
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
     def load_config(self):
@@ -742,14 +732,14 @@ class Agent:
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
             
-            if self.curiosity_module.beta==0:
-                icm_loss = (self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask).mean()
-            elif self.curiosity_module.beta==1:
-                icm_loss = (self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask).mean()
+            if self.online_net.curiosity_module.beta==0:
+                icm_loss = (self.online_net.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)).mean()
+            elif self.online_net.curiosity_module.beta==1:
+                icm_loss = (self.online_net.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)).mean()
             else:
-                inverse_loss = (self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask).mean()
-                forward_loss = (self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask).mean()
-                icm_loss = (1-self.curiosity_module.beta)*inverse_loss+self.curiosity_module.beta*forward_loss
+                inverse_loss = (self.online_net.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)).mean()
+                forward_loss = (self.online_net.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)).mean()
+                icm_loss = (1-self.online_net.curiosity_module.beta)*inverse_loss+self.online_net.curiosity_module.beta*forward_loss
                   
             
                 
@@ -791,7 +781,7 @@ class Agent:
         # sum up all the values of policy_losses and value_losses
         actor_critic_loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
         if self.icm:
-            loss = self.curiosity_module.lambda_weight*actor_critic_loss+icm_loss
+            loss = self.online_net.curiosity_module.lambda_weight*actor_critic_loss+icm_loss
         else:
             loss = actor_critic_loss
         
@@ -819,10 +809,8 @@ class Agent:
         next_input_observation, next_input_observation_char, _ = self.get_agent_inputs(
             next_obs_list)
 
-        finals_mask = (1-to_pt(np.array(actual_n_list, dtype=bool), self.use_cuda))
-        
-
         if self.icm:
+            input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
             input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
             input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
             
@@ -831,13 +819,16 @@ class Agent:
             action_inputs = torch.stack(action_list)
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
+            
+            if self.online_net.curiosity_module.beta==0:
+                icm_loss = (self.online_net.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)).mean()
+            elif self.online_net.curiosity_module.beta==1:
+                icm_loss = (self.online_net.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)).mean()
+            else:
+                inverse_loss = (self.online_net.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)).mean()
+                forward_loss = (self.online_net.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)).mean()
+                icm_loss = (1-self.online_net.curiosity_module.beta)*inverse_loss+self.online_net.curiosity_module.beta*forward_loss
 
-            forward_loss = self.curiosity_module.get_forward_loss(encoded_states,encoded_actions,encoded_next_states)*finals_mask
-            inverse_loss = self.curiosity_module.get_inverse_loss(encoded_states,action_inputs,encoded_next_states)*finals_mask
-            icm_loss = (1-self.curiosity_module.beta)*inverse_loss.mean()+self.curiosity_module.beta*forward_loss.mean()
-                  
-            
-            
         possible_words, next_possible_words = [], []
         for i in range(3):
             possible_words.append([item[i] for item in possible_words_list])
@@ -896,7 +887,7 @@ class Agent:
             dqn_loss = F.smooth_l1_loss(q_value, rewards)
 
             if self.icm:
-                loss = self.curiosity_module.lambda_weight*dqn_loss+icm_loss
+                loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+icm_loss
             else:
                 loss = dqn_loss
             return loss
@@ -929,7 +920,7 @@ class Agent:
         dqn_loss = -torch.sum(m * log_q_value, 1)
         dqn_loss = torch.mean(dqn_loss)
         if self.icm:
-            loss = self.curiosity_module.lambda_weight*dqn_loss+icm_loss
+            loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+icm_loss
         else:
             loss = dqn_loss
         return loss
@@ -951,17 +942,12 @@ class Agent:
         loss = interaction_loss * self.interaction_loss_lambda
         
         # Backpropagate
-        if self.icm:
-            self.curiosity_module.zero_grad()
+        
         self.online_net.zero_grad()
         self.optimizer.zero_grad()
         
         loss.backward()
 
-        if self.icm:
-            torch.nn.utils.clip_grad_norm_(
-            self.curiosity_module.parameters(), self.clip_grad_norm)
-    
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(
             self.online_net.parameters(), self.clip_grad_norm)

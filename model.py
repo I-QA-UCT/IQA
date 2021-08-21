@@ -76,6 +76,7 @@ class DQN(torch.nn.Module):
         self.noisy_net = self.config['epsilon_greedy']['noisy_net']
 
         self.dqn_conditioning = self.config['dqn_conditioning']
+        self.icm = self.config['icm']['enable']
 
     def _def_layers(self):
         """
@@ -162,6 +163,9 @@ class DQN(torch.nn.Module):
                 self.block_hidden_dim, self.question_answerer_hidden_dim)
             self.question_answerer_output_2 = linear_function(
                 self.question_answerer_hidden_dim, 2)
+
+        if self.icm:
+            self.curiosity_module = ICM(self.config,self.block_hidden_dim,3*self.word_embedding_size,self.word_vocab_size)
 
     def get_match_representations(self, doc_encodings, doc_mask, q_encodings, q_mask):
         # node encoding: batch x num_node x hid
@@ -357,6 +361,7 @@ class ActorCritic(torch.nn.Module):
         self.action_scorer_hidden_dim = model_config['action_scorer_hidden_dim']
         self.question_answerer_hidden_dim = model_config['question_answerer_hidden_dim']
         self.noisy_net = self.config['epsilon_greedy']['noisy_net']
+        self.icm = self.config['icm']['enable']
 
     def _def_layers(self):
         """
@@ -423,6 +428,10 @@ class ActorCritic(torch.nn.Module):
                 self.block_hidden_dim, self.question_answerer_hidden_dim)
             self.question_answerer_output_2 = linear_function(
                 self.question_answerer_hidden_dim, 2)
+
+        if self.icm:
+            self.curiosity_module = ICM(self.config,self.block_hidden_dim,3*self.word_embedding_size,self.word_vocab_size)
+            
 
     def get_match_representations(self, doc_encodings, doc_mask, q_encodings, q_mask):
         # node encoding: batch x num_node x hid
