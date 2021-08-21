@@ -8,6 +8,15 @@ import torch
 import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 from bert_embedder import BertEmbedder
+import os 
+
+def init_openIE():
+    try:
+        cmd = 'cd stanford-corenlp-4.2.2 && java -mx6g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000 > /dev/null 2>&1 &'
+        os.system(cmd)
+    except:
+        print("Error setting up Stanford OpenIE.")
+    print("Stanford Open IE initialised and listening on port 9000.")
 
 def openIE(sentence):
     url = "http://localhost:9000/"
@@ -39,6 +48,8 @@ class SupplementaryKG(object):
         self.bert = BertEmbedder(bert_size, [], self.device)
         self.state_ent_emb = None
         self.embeds = []
+
+        init_openIE()
 
     def load_files(self):
         vocab = {}
@@ -111,7 +122,7 @@ class SupplementaryKG(object):
         except:
              print("Error: OpenIE")
 
-        
+        # print(rules)
         prev_remove = []
         room = ""
         room_set = False 

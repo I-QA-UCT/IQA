@@ -296,11 +296,11 @@ class GAT(torch.nn.Module):
         adj = graph_rep.edge_index
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.attentions(x, adj)
-        # x = F.elu(x) #Optional nonlinearity function
+        x = F.elu(x) #Optional nonlinearity function
         x = F.dropout(x, self.dropout, training=self.training)
-        return x
-        # x = self.out_attention(x, adj)
-        # return F.elu(x) #For multi head attention
+        # return x
+        x = self.out_attention(x, adj)
+        return F.elu(x) #For multi head attention
 
     #TODO: Add multi-head attention to config 
 
@@ -325,7 +325,7 @@ class StateNetwork(torch.nn.Module):
                 features = 512 #Small or medium
 
             self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'])
-            self.transformer = Transformer(hidden_size=params['num_hidden'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
+            self.transformer = Transformer(hidden_size=params['out_features'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
         else:
             self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
             if params['qa_init']:
@@ -380,7 +380,6 @@ class StateNetwork(torch.nn.Module):
         
         if self.use_bert:
             x = self.GAT(graph_rep)
-
             count = 0
             graph_list = []
             for num in batch_num_nodes:
