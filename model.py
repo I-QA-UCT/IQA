@@ -350,7 +350,7 @@ class StateNetwork(torch.nn.Module):
                 else:
                     graph_node_ids.append(1)
 
-            graph_node_ids = torch.LongTensor(graph_node_ids, device =self.device)
+            graph_node_ids = torch.LongTensor(graph_node_ids, device=self.device)
 
             cur_embeds = self.pretrained_embeds(graph_node_ids)
 
