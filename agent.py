@@ -48,7 +48,7 @@ class Agent:
             self.target_net.cuda()
 
         params = self.config['gat']
-        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'],self.config['gat']['use_bert'],self.config['gat']['bert_size'])
+        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'],self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device)
         params['vocab_size'] = len(self.state.vocab)
         params['use_cuda'] = self.config['general']['use_cuda']
 
@@ -108,12 +108,15 @@ class Agent:
             if not self.config['general']['use_cuda']:
                 print("WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
+                self.device = torch.device("cpu")
             else:
                 torch.backends.cudnn.deterministic = True
                 torch.cuda.manual_seed(self.random_seed)
                 self.use_cuda = True
+                self.device = torch.device("cuda")
         else:
             self.use_cuda = False
+            self.device = torch.device("cpu")
 
         if self.question_type == "location":
             self.answer_type = "pointing"
@@ -147,9 +150,7 @@ class Agent:
         self.atoms = self.config['distributional']['atoms']
         self.v_min = self.config['distributional']['v_min']
         self.v_max = self.config['distributional']['v_max']
-        self.support = torch.linspace(self.v_min, self.v_max, self.atoms)  # Support (range) of z
-        if self.use_cuda:
-            self.support = self.support.cuda()
+        self.support = torch.linspace(self.v_min, self.v_max, self.atoms, device=self.device)  # Support (range) of z
         self.delta_z = (self.v_max - self.v_min) / (self.atoms - 1)
 
         # dueling networks
@@ -667,12 +668,8 @@ class Agent:
             u[(l < (self.atoms - 1)) * (l == u)] += 1
 
             # Distribute probability of Tz
-            m = torch.zeros(batch_size, self.atoms).float()
-            if self.use_cuda:
-                m = m.cuda()
-            offset = torch.linspace(0, ((batch_size - 1) * self.atoms), batch_size).unsqueeze(1).expand(batch_size, self.atoms).long()
-            if self.use_cuda:
-                offset = offset.cuda()
+            m = torch.zeros(batch_size, self.atoms,device =self.device).float()
+            offset = torch.linspace(0, ((batch_size - 1) * self.atoms), batch_size, device =self.device).unsqueeze(1).expand(batch_size, self.atoms).long()
             m.view(-1).index_add_(0, (l + offset).view(-1), (next_q_value * (u.float() - b)).view(-1))  # m_l = m_l + p(s_t+n, a*)(u - b)
             m.view(-1).index_add_(0, (u + offset).view(-1), (next_q_value * (b - l.float())).view(-1))  # m_u = m_u + p(s_t+n, a*)(b - l)
 

@@ -12,8 +12,11 @@ class BertEmbedder(nn.Module):
                 medium (L=8, H=512)
     """
 
-    def __init__(self, size, bert_fine_tune_layers):
+    def __init__(self, size, bert_fine_tune_layers, device):
         super().__init__()
+
+        self.device = device
+
         self.size = size
         self.bert_fine_tune_layers = bert_fine_tune_layers
         model_name = "prajjwal1/bert-" + self.size
@@ -46,7 +49,7 @@ class BertEmbedder(nn.Module):
 
     def embed(self, string):
         encoding = self.tokenizer(string, return_tensors="pt")
-        input_ids = encoding["input_ids"]#.cuda()
+        input_ids = encoding["input_ids"].to(self.device)
         # print("in ids:", input_ids.size())
 
         if input_ids.size(-1) > 512:

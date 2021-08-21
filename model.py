@@ -350,10 +350,7 @@ class StateNetwork(torch.nn.Module):
                 else:
                     graph_node_ids.append(1)
 
-            if self.use_cuda:
-                graph_node_ids = torch.LongTensor(graph_node_ids).cuda()
-            else:
-                graph_node_ids = torch.LongTensor(graph_node_ids)
+            graph_node_ids = torch.LongTensor(graph_node_ids, device =self.device)
 
             cur_embeds = self.pretrained_embeds(graph_node_ids)
 

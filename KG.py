@@ -20,7 +20,7 @@ def openIE(sentence):
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_cuda, use_bert, bert_size):
+    def __init__(self, use_cuda, use_bert, bert_size, device):
     
         self.use_bert = use_bert
         self.vocab, self.vocab_er = self.load_files()
@@ -35,7 +35,8 @@ class SupplementaryKG(object):
         self.entities = OrderedDict()
         self.entity_nums = 0
 
-        self.bert = BertEmbedder(bert_size, [])
+        self.device = device
+        self.bert = BertEmbedder(bert_size, [], self.device)
         self.state_ent_emb = None
         self.embeds = []
 
@@ -245,14 +246,11 @@ class SupplementaryKG(object):
             self.adj_matrix[0].append(source_id) 
             self.adj_matrix[1].append(target_id)
 
-        edge_index = torch.tensor(self.adj_matrix, dtype=torch.long)#.cuda()
+        edge_index = torch.tensor(self.adj_matrix, dtype=torch.long, device = self.device)
 
         self.state_ent_emb_bert()
 
-        if self.use_cuda:
-            data = Data(x=self.state_ent_emb.weight, edge_index=edge_index).cuda()
-        else:
-            data = Data(x=self.state_ent_emb.weight, edge_index=edge_index)
+        data = Data(x=self.state_ent_emb.weight, edge_index=edge_index).to(self.device)
 
         return data
 
@@ -284,10 +282,7 @@ class SupplementaryKG(object):
         if self.use_bert:
             self.graph_state_rep = self.get_state_representation_bert()
         else:
-            if self.use_cuda:
-                self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix).cuda()
-            else:
-                self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix)
+            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix, device =self.device)
 
 
 if __name__ == '__main__':
