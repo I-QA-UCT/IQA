@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizer, BertForMultipleChoice, DistilBertTokenizer ,DistilBertForMultipleChoice
+from transformers import BertTokenizerFast, BertModel
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -223,27 +223,34 @@ class DecisionTransformer(nn.Module):
         return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1]), torch.argmax(answer_pred[0,-1])
 
 class QuestionAnsweringBert(nn.Module):
-    def __init__(self):
+    def __init__(self,vocab_size,hidden_size=64):
         super(QuestionAnsweringBert,self).__init__()
 
-        self.bert = DistilBertForMultipleChoice.from_pretrained('distilbert-base-uncased')
-        self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        self.bert = BertModel.from_pretrained('distilbert-base-uncased',output_hidden_states=True)
+        self.tokenizer = BertTokenizerFast.from_pretrained('distilbert-base-uncased')
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        self.to(self.device)
+        self.hidden_size = hidden_size
 
         self.context_window = 512
-
-    def forward(self, prompts, choices, questions):#questions, passages):
+        self.vocab_size = vocab_size
         
-        batch_size = len(prompts)
-        outputs = []
-        for prompt,question in zip(prompts,questions):
-            prompt_question = "[CLS] " + prompt + " [SEP] " + question
-            encoding = self.tokenizer([prompt_question]*len(choices), choices,truncation="only_first", max_length=self.context_window, padding='max_length',return_tensors='pt')
-            output = self.bert(**{k: v.unsqueeze(0).to(self.device) for k,v in encoding.items()})
-            outputs.append(output["logits"])
+        self.out = nn.Linear(self.bert.config.hidden_size, self.vocab_size)
 
-        return torch.stack(outputs).squeeze(0)
+        self.softmax = nn.Softmax()
+    
+    def forward(self, prompts, questions):#questions, passages):
+        
+        # batch_size = len(prompts)
+        # outputs = []
+        prompt_questions = []
+        for prompt,question in zip(prompts,questions):
+            prompt_questions.append("[CLS] " + prompt + " [SEP] " + question)
+        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
+        output = self.bert(input_ids=encoding['input_ids'],
+                attention_mask=encoding['attention_mask'])
+        out = self.out(output["pooler_output"]) ## extract the 1st token's embeddings
+        
+        return self.softmax(out)
         
 class Trajectory(object):
 

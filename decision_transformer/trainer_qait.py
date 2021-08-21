@@ -178,13 +178,14 @@ class Trainer:
 class QuestionAnsweringDataLoader(Dataset):
 
     def __init__(self,data):
-        self.offline_rl_data_filename = RELATIVE_PATH + data
-        self.word_encodings_filename = WORD_ENCODINGS
+        offline_rl_data_filename = RELATIVE_PATH + data
+        word_encodings_filename = WORD_ENCODINGS
 
-        with open(self.offline_rl_data_filename) as offline_rl_data:
+        with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
-
+            word_encodings = json.load(word_encodings_data)
+            self.vocab_size = len(word_encodings)
             prompts, questions, answers = [], [], []
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
@@ -193,9 +194,9 @@ class QuestionAnsweringDataLoader(Dataset):
 
                 prompt = []
                 for game_step in episode["steps"]:
-                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
+                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>",""))
                 
-                self.dataset.append((" ".join(prompt), episode["question"], episode["answer"]))
+                self.dataset.append((" ".join(prompt), episode["question"], word_encodings[episode["answer"]]))
 
 
     def __len__(self):
@@ -244,10 +245,7 @@ class QuestionAnsweringTrainer:
         self.epochs = epochs
         self.steps = steps_per_epoch
 
-        self.choices = ["kitchen", "pantry", "livingroom", "bathroom", "bedroom",
-                  "backyard", "garden", "shed", "driveway", "street",
-                  "corridor", "supermarket","inventory"]
-        self.choice2id = {v:i for i,v in enumerate(self.choices)}
+        self.choice2id = self.dataset
 
     
     def train_step(self):
@@ -255,12 +253,8 @@ class QuestionAnsweringTrainer:
         for batch in self.dataloader:
 
             prompts, questions, answers = batch
-            output = self.model.forward(prompts, self.choices, questions)
-            
-            labels = torch.tensor([self.choice2id[answer] for answer in answers]).to(self.model.device)
-
-            loss = self.loss_fn(output,labels)
-
+            output = self.model.forward(prompts, questions)
+            loss = self.loss_fn(output,torch.tensor(answers))
             self.optimizer.zero_grad()
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
@@ -325,7 +319,16 @@ class SequenceTrainer(Trainer):
         return loss.detach().cpu().item()
 
 if __name__ == "__main__":
-    model = QuestionAnsweringBert()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--num_workers', type=int, default=2)
+    parser.add_argument('--data', type=str, default="random_rollouts.json")
+
+    args = parser.parse_args()
+
+    model = QuestionAnsweringBert(vocab_size=1654)
     model.train()
     
     optimizer = torch.optim.AdamW(
@@ -333,6 +336,6 @@ if __name__ == "__main__":
         lr=1e-4,
         weight_decay=1e-4,
     )
-    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(), batch_size=1, num_workers=1, data="random_rollouts.json",)
+    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(), **vars(args))
 
     trainer.train()
