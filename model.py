@@ -658,6 +658,9 @@ class ICM(torch.nn.Module):
         self.feature_size = self.config['icm']['state_feature_size']
         self.use_inverse_model = self.config['icm']['inverse_reward']
         self.use_feature_net = self.config['icm']['use_feature_net']
+        self.inverse_loss_action_weight = ['icm']['inverse_action_weight']
+        self.inverse_loss_modifier_weight = ['icm']['inverse_modifier_weight']
+        self.inverse_loss_object_weight = ['icm']['inverse_object_weight']
 
     def get_feature(self, state):
         """
@@ -706,7 +709,7 @@ class ICM(torch.nn.Module):
 
     def get_inverse_loss(self, state, action, next_state):
         """
-        # TODO Investigate the difference between mult of probs and addition of probs
+        
         Get the loss of the inverse model.
         :param state: the current state.
         :param action: the action performed.
@@ -719,7 +722,7 @@ class ICM(torch.nn.Module):
         action_probs = torch.gather(predicted_action,-1,action)[:,0]
         modifier_probs = torch.gather(predicted_modifier,-1,action)[:,1]
         object_probs = torch.gather(predicted_object,-1,action)[:,2]
-        loss = -torch.log(action_probs+modifier_probs+object_probs)
+        loss = -(self.inverse_loss_action_weight*torch.log(action_probs)+self.inverse_loss_modifier_weight*torch.log(modifier_probs)+self.inverse_loss_object_weight*torch.log(object_probs))
         return loss
 
     def get_forward_loss(self, state, action, next_state):

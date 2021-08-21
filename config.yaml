@@ -72,8 +72,11 @@ icm:
   hidden_size: 128
   state_feature_size: 128
   inverse_reward: True
-  use_intrinsic_reward: True
+  use_intrinsic_reward: False
   use_feature_net : False
+  inverse_action_weight: 1
+  inverse_modifier_weight: 0
+  inverse_object_weight: 0
 
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled
