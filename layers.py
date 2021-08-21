@@ -449,7 +449,7 @@ class CQAttention(torch.nn.Module):
 
 
 class AnswerPointer(torch.nn.Module):
-    def __init__(self, block_hidden_dim, noisy_net=False):
+    def __init__(self, block_hidden_dim, gat_out_features, noisy_net=False):
         super().__init__()
         self.noisy_net = noisy_net
         if self.noisy_net:
@@ -457,13 +457,14 @@ class AnswerPointer(torch.nn.Module):
             self.w_1_advantage = NoisyLinear(block_hidden_dim * 2, block_hidden_dim)
             self.w_2 = NoisyLinear(block_hidden_dim, 1)
         else:
-            self.w_1 = torch.nn.Linear(block_hidden_dim * 2, 1)
-            self.w_1_advantage = torch.nn.Linear(block_hidden_dim * 2, block_hidden_dim)
+            self.w_1 = torch.nn.Linear(block_hidden_dim * 2+gat_out_features, 1)
+            self.w_1_advantage = torch.nn.Linear(block_hidden_dim * 2 + gat_out_features, block_hidden_dim)
             self.w_2 = torch.nn.Linear(block_hidden_dim, 1)
 
-    def forward(self, M1, M2, mask):
-        X_concat = torch.cat([M1, M2], dim=-1)
+    def forward(self, M1, M2, mask, GAT):
+        X_concat = torch.cat([M1, M2, torch.cat([GAT] * len(M1[0])).unsqueeze(0)], dim=-1)
         X = torch.relu(self.w_1(X_concat))
+
         X_advantage = torch.relu(self.w_1_advantage(X_concat))
         X = X * mask.unsqueeze(-1)
         X = X + X_advantage - X_advantage.mean(-1, keepdim=True)  # combine streams

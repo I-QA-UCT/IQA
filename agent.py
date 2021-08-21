@@ -696,7 +696,7 @@ class Agent:
         self.optimizer.step()  # apply gradients
         return to_np(torch.mean(interaction_loss))
 
-    def answer_question(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online"):
+    def answer_question(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, gat_out,use_model="online"):
         """
         Answer question based on observations.
         :param input_observation: observation strings processed into pytorch tensor.
@@ -724,7 +724,7 @@ class Agent:
             mask = mask * location_mask
 
         match_representation_sequence = self.get_match_representations(input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
-        pred = model.answer_question(match_representation_sequence, mask)  # batch x vocab or batch x 2
+        pred = model.answer_question(match_representation_sequence, mask, gat_out)  # batch x vocab or batch x 2
 
         # attention sum:
         # sometimes certain word appears multiple times in the observation,
@@ -765,7 +765,8 @@ class Agent:
     def answer_question_act_greedy(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char):
 
         with torch.no_grad():
-            vocab_distribution, _, vocab_mask = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online")  # batch x time
+            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            vocab_distribution, _, vocab_mask = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char,gat_out, use_model="online")  # batch x time
             positions_maxq = self.point_maxq_position(vocab_distribution, vocab_mask)
             return positions_maxq  # batch
 

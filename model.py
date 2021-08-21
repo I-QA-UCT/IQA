@@ -66,7 +66,7 @@ class DQN(torch.nn.Module):
         self.aggregation_layers = model_config['aggregation_layers']
         self.aggregation_conv_num = model_config['aggregation_conv_num']
         self.block_hidden_dim = model_config['block_hidden_dim']
-        self.gat_out_dim = self.config['gat']['out_features']
+        self.gat_out_features = self.config['gat']['out_features']
         self.n_heads = model_config['n_heads']
         self.block_dropout = model_config['block_dropout']
         self.attention_dropout = model_config['attention_dropout']
@@ -122,7 +122,7 @@ class DQN(torch.nn.Module):
                                                                 n_head=self.n_heads, dropout=self.block_dropout) for _ in range(self.aggregation_layers)])
 
         linear_function = NoisyLinear if self.noisy_net else torch.nn.Linear
-        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim+self.gat_out_dim, self.action_scorer_hidden_dim)
+        self.action_scorer_shared_linear = linear_function(self.block_hidden_dim+self.gat_out_features, self.action_scorer_hidden_dim)
 
         if self.use_distributional:
             if self.dueling_networks:
@@ -148,7 +148,7 @@ class DQN(torch.nn.Module):
                 action_scorers_advantage.append(linear_function(self.action_scorer_hidden_dim, action_scorer_advantage_output_size))
             self.action_scorers_advantage = torch.nn.ModuleList(action_scorers_advantage)
 
-        self.answer_pointer = AnswerPointer(block_hidden_dim=self.block_hidden_dim, noisy_net=self.noisy_net)
+        self.answer_pointer = AnswerPointer(block_hidden_dim=self.block_hidden_dim, gat_out_features = self.gat_out_features, noisy_net=self.noisy_net)
 
         if self.answer_type in ["2 way"]:
             self.question_answerer_output_1 = linear_function(self.block_hidden_dim, self.question_answerer_hidden_dim)
@@ -217,7 +217,7 @@ class DQN(torch.nn.Module):
             action_ranks.append(q)
         return action_ranks
 
-    def answer_question(self, matching_representation_sequence, doc_mask):
+    def answer_question(self, matching_representation_sequence, doc_mask, gat_out):
         """
         Answer question based on representation
         :return prediction distribution.
@@ -228,7 +228,7 @@ class DQN(torch.nn.Module):
         for i in range(self.aggregation_layers):
              M0 = self.aggregators[i](M0, doc_mask, square_mask, i * (self.aggregation_conv_num + 2) + 1, self.aggregation_layers)
         M2 = M0
-        pred = self.answer_pointer(M1, M2, doc_mask)  # batch x time
+        pred = self.answer_pointer(M1, M2, doc_mask,gat_out)  # batch x time
         # pred_distribution: batch x time
         pred_distribution = masked_softmax(pred, m=doc_mask, axis=-1)  # 
         if self.answer_type == "pointing":
