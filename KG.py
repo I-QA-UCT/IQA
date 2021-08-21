@@ -11,11 +11,8 @@ from bert_embedder import BertEmbedder
 import os 
 
 def init_openIE():
-    try:
-        cmd = 'cd stanford-corenlp-4.2.2 && java -mx6g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000 > /dev/null 2>&1 &'
-        os.system(cmd)
-    except:
-        print("Error setting up Stanford OpenIE.")
+    cmd = 'cd stanford-corenlp-4.2.2 && java -mx6g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000 > /dev/null 2>&1 &'
+    os.system(cmd)
     print("Stanford Open IE initialised and listening on port 9000.")
 
 def openIE(sentence):
@@ -101,26 +98,23 @@ class SupplementaryKG(object):
         self.visible_state = str(visible_state)
         
         rules = []
-        try:
-            #Run visible state through Standford OpenIE and extract triple into list of rules
-            sents = openIE(self.visible_state)['sentences']
-            for obv in sents:
-                triple = obv['openie']
-                for tr in triple:
-                    subject, relation, object = tr['subject'].lower(), tr['relation'].lower(), tr['object'].lower()
+        #Run visible state through Standford OpenIE and extract triple into list of rules
+        sents = openIE(self.visible_state)['sentences']
+        for obv in sents:
+            triple = obv['openie']
+            for tr in triple:
+                subject, relation, object = tr['subject'].lower(), tr['relation'].lower(), tr['object'].lower()
 
-                    #Change subject to be singularised i.e. from 1st to 2nd person
-                    if subject == 'we':
-                        subject = 'you'
-                        if relation == 'are in':
-                            relation = "'ve entered"
+                #Change subject to be singularised i.e. from 1st to 2nd person
+                if subject == 'we':
+                    subject = 'you'
+                    if relation == 'are in':
+                        relation = "'ve entered"
 
-                    if subject == 'it':
-                        break
+                if subject == 'it':
+                    break
 
-                    rules.append((subject, relation, object))
-        except:
-             print("Error: OpenIE")
+                rules.append((subject, relation, object))
 
         # print(rules)
         prev_remove = []

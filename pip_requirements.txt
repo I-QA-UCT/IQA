@@ -45,7 +45,6 @@ opencv-python==4.5.3.56
 packaging==21.0
 pandas==1.1.5
 pathy==0.6.0
-Pillow @ file:///tmp/build/80754af9/pillow_1625649052827/work
 preshed==3.0.5
 prompt-toolkit==2.0.10
 pybars3==0.9.7
@@ -67,7 +66,6 @@ sacremoses==0.0.45
 scikit-learn==0.24.2
 scipy==1.5.4
 selenium==3.141.0
-six @ file:///tmp/build/80754af9/six_1623709665295/work
 smart-open==5.1.0
 spacy==3.1.1
 spacy-legacy==3.0.8
