@@ -1,3 +1,4 @@
+from os import device_encoding
 import torch
 import math
 import h5py
@@ -573,17 +574,17 @@ class GATlayer(torch.nn.Module):
 
 class Transformer(torch.nn.Module):
 
-    def __init__(self, hidden_size, num_layers, transformer_heads, dropout, intermediate_fac=2):
+    def __init__(self, hidden_size, num_layers, transformer_heads, dropout, device, intermediate_fac=2):
         super().__init__()
         self.hidden_size = hidden_size
-
+        self.device = device
         encoder_layer = TransformerEncoderLayer(self.hidden_size, transformer_heads,
-                                                self.hidden_size * intermediate_fac, dropout, 'relu')
-        encoder_norm = LayerNorm(self.hidden_size)
+                                                self.hidden_size * intermediate_fac, dropout, 'relu', device=self.device)
+        encoder_norm = LayerNorm(self.hidden_size, device= self.device)
         self.encoder = TransformerEncoder(encoder_layer, num_layers, encoder_norm)
 
     @staticmethod
-    def pad(vecs):
+    def pad(vecs, device):
         """
             pytorches transformer layer wants 1=pad, 0=seq
             it also wants (seq, batch, emb)
@@ -591,7 +592,7 @@ class Transformer(torch.nn.Module):
         lengths = [ex.size(-2) for ex in vecs]
         max_len = max(lengths)
         masks = [[False] * size + [True] * (max_len - size) for size in lengths]
-        masks = torch.tensor(masks)#.cuda()
+        masks = torch.tensor(masks, device=device)
         batch = pad_sequence(vecs, batch_first=False)
 
         # print("mask:", masks.size(), masks)

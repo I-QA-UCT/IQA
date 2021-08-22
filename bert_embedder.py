@@ -21,7 +21,7 @@ class BertEmbedder(nn.Module):
         self.bert_fine_tune_layers = bert_fine_tune_layers
         model_name = "prajjwal1/bert-" + self.size
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(self.device)
         print("bert config:",  self.model.config.__dict__)
         self.dims = self.model.config.hidden_size
         self.set_trainable_params()
@@ -49,7 +49,7 @@ class BertEmbedder(nn.Module):
 
     def embed(self, string):
         encoding = self.tokenizer(string, return_tensors="pt")
-        input_ids = encoding["input_ids"].to(self.device)
+        input_ids = encoding["input_ids"]#.to(self.device)
         # print("in ids:", input_ids.size())
 
         if input_ids.size(-1) > 512:

@@ -26,7 +26,7 @@ def openIE(sentence):
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_cuda, use_bert, bert_size, device):
+    def __init__(self, use_bert, bert_size, device):
     
         self.use_bert = use_bert
         self.vocab, self.vocab_er = self.load_files()
@@ -37,7 +37,6 @@ class SupplementaryKG(object):
         self.adj_matrix = None #Matrix of adjacent nodes in the graph (used as part of attention representation for GAT)
         self.graph_state_rep = []  #Representation attention between entities 
 
-        self.use_cuda = use_cuda
         self.entities = OrderedDict()
         self.entity_nums = 0
 

@@ -284,12 +284,12 @@ class DQN(torch.nn.Module):
 
 class GAT(torch.nn.Module):
 
-    def __init__(self, num_features, num_hidden, num_class, num_heads, dropout, alpha):
+    def __init__(self, num_features, num_hidden, num_class, num_heads, dropout, alpha, device):
         super(GAT, self).__init__()
         self.dropout = dropout
-
-        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout)
-        self.out_attention = GATConv(in_channels=num_hidden * num_heads, out_channels=num_class, heads=1, concat=False, negative_slope=alpha, dropout=dropout) #TODO Investigate heads=1
+        self.device = device
+        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout).to(self.device)
+        self.out_attention = GATConv(in_channels=num_hidden * num_heads, out_channels=num_class, heads=1, concat=False, negative_slope=alpha, dropout=dropout).to(self.device) #TODO Investigate heads=1
     
     def forward(self, graph_rep):
         x = graph_rep.x
@@ -306,11 +306,11 @@ class GAT(torch.nn.Module):
 
 class StateNetwork(torch.nn.Module):
     # def __init__(self, action_set, params, embeddings=None):
-    def __init__(self, params, embeddings=None):
+    def __init__(self, params, device, embeddings=None):
         super(StateNetwork,self).__init__()
         self.params = params
         # self.action_set = action_set
-        self.use_cuda = params['use_cuda']
+        self.device = device
         self.use_bert = params['use_bert']
         self.bert_size = params['bert_size']
         if self.use_bert:
@@ -324,8 +324,8 @@ class StateNetwork(torch.nn.Module):
             else:
                 features = 512 #Small or medium
 
-            self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'])
-            self.transformer = Transformer(hidden_size=params['out_features'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'])
+            self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'], device=self.device)
+            self.transformer = Transformer(hidden_size=params['out_features'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'], device=self.device)
         else:
             self.GAT = GAT(num_features=params['gat_emb_size'], num_hidden=params['gat_hidden_size'], num_class=params['gat_out_size'], dropout=params['dropout_ratio'], alpha=params['alpha'], num_heads=params['gat_num_heads'])
             if params['qa_init']:
@@ -387,7 +387,7 @@ class StateNetwork(torch.nn.Module):
                 graph_list.append(graph)
                 count += num
 
-            batch, masks = self.transformer.pad(graph_list)
+            batch, masks = self.transformer.pad(vecs=graph_list, device=self.device)
             out = self.transformer.encoder(src=batch, src_key_padding_mask=masks).permute(1,0,2)
             out = out[:,-1,:]
 

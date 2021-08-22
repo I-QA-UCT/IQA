@@ -48,12 +48,12 @@ class Agent:
             self.target_net.cuda()
 
         params = self.config['gat']
-        self.state = KG.SupplementaryKG(self.config['general']['use_cuda'],self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device)
-        params['vocab_size'] = len(self.state.vocab)
-        params['use_cuda'] = self.config['general']['use_cuda']
+        self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device)
+        # params['vocab_size'] = len(self.state.vocab)
+        # params['use_cuda'] = self.config['general']['use_cuda']
 
-        self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        self.GAT = StateNetwork(params=params,  embeddings=self.action_emb.weight)
+        # self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
+        self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
