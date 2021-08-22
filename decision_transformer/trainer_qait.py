@@ -234,45 +234,77 @@ class QuestionAnsweringDataLoader(Dataset):
                 # yield prompts, choices, questions, answers
                     # prompts, questions, answers = [], [], []
 
-class QuestionAnsweringTrainer:
+class QuestionAnsweringTrainer(Trainer):
 
-    def __init__(self,model, optimizer, loss_fn ,epochs=100, steps_per_epoch=10, batch_size=4,data="dqn_loc.json" ,**kwargs):
+    def __init__(self,model, optimizer, loss_fn, batch_size, get_batch=None, data="dqn_loc.json" ,**kwargs):
+        super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
+        
         self.dataset = QuestionAnsweringDataLoader(data)
         self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, **kwargs)
-        self.model = model
-        self.optimizer = optimizer
-        self.loss_fn = loss_fn
-        self.epochs = epochs
-        self.steps = steps_per_epoch
-
         self.choice2id = self.dataset
 
     
     def train_step(self):
-        loss = 0
+        total_loss = 0
+        hits = 0
         for batch in self.dataloader:
 
             prompts, questions, answers = batch
             output = self.model.forward(prompts, questions)
-            loss = self.loss_fn(output,torch.tensor(answers))
+            answers_tensor = torch.tensor(answers,device=self.model.device)
+            loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
 
-            loss += loss.detach().cpu().item()
-        return loss
+            total_loss += loss.detach().cpu().item()
+            hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach().cpu().item()
 
-    def train(self):
+        return total_loss, hits
+
+
+    def train_iteration(self, num_steps, iter_num=0, print_logs=False):
+
+        train_losses, train_accuracies = [], []
+        logs = dict()
+
+        train_start = time.time()
+
         self.model.train()
-        train_losses = []
-        for epoch in range(self.epochs):
-            train_loss = self.train_step()
-            print(f"Epoch {epoch+1}/{self.epochs}: Train loss = {train_loss}")
+        for step in range(num_steps):
+            train_loss, train_accuracy = self.train_step()
             train_losses.append(train_loss)
-            # if self.scheduler is not None:
-            #     self.scheduler.step()
+            train_accuracies.append(train_accuracy)
+            if self.scheduler is not None:
+                self.scheduler.step()
 
+        logs['time/training'] = time.time() - train_start
+
+        eval_start = time.time()
+
+        # self.model.eval()
+        # for eval_fn in self.eval_fns:
+        #     outputs = eval_fn(self.model)
+        #     for k, v in outputs.items():
+        #         logs[f'evaluation/{k}'] = v
+
+        logs['time/total'] = time.time() - self.start_time
+        logs['time/evaluation'] = time.time() - eval_start
+        logs['training/train_loss_mean'] = np.mean(train_losses)
+        logs['training/train_loss_std'] = np.std(train_losses)
+        logs['training/QA_accuracy'] = np.mean(train_accuracies)
+
+        for k in self.diagnostics:
+            logs[k] = self.diagnostics[k]
+
+        if print_logs:
+            print('=' * 80)
+            print(f'Iteration {iter_num}')
+            for k, v in logs.items():
+                print(f'{k}: {v}')
+
+        return logs
 
 
 class SequenceTrainer(Trainer):
@@ -325,18 +357,34 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--data', type=str, default="random_rollouts.json")
-
+    
     args = parser.parse_args()
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--directory', type=str, default="./decision_transformer/saved_models")
+    parser.add_argument('--env', type=str, default="qa_random_rollouts_location")
+    parser.add_argument('--max_iters', type=int, default=100)
+    parser.add_argument('--num_steps_per_iter', type=int, default=10)
+
+    env_args = parser.parse_args()
 
     model = QuestionAnsweringBert(vocab_size=1654)
-    model = model.cuda()
-    model.train()
+    if torch.cuda.is_available():
+        model = model.cuda()
     
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=1e-4,
         weight_decay=1e-4,
     )
-    trainer = QuestionAnsweringTrainer(model,optimizer, torch.nn.CrossEntropyLoss(), **vars(args))
+    loss_fn = torch.nn.CrossEntropyLoss()
+    trainer = QuestionAnsweringTrainer(model, optimizer, loss_fn, **vars(args))
+    epochs = env_args['max_iters']
+    steps_per_epoch = env_args['num_steps_per_iter']
 
-    trainer.train()
+    max_accuracy = 0
+    for epoch in range(epochs):
+        logs = trainer.train_iteration(steps_per_epoch, iter_num=epoch, print_logs=True)
+        if logs['training/QA_accuracy'] > max_accuracy:
+            max_accuracy = logs['training/QA_accuracy']
+            torch.save(model,f"{env_args['directory']}/{env_args['env']}")

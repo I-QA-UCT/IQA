@@ -61,7 +61,7 @@ class DecisionTransformer(nn.Module):
         self.encoder = torch.nn.GRU(768 if self.bert_embeddings else hidden_size,hidden_size,batch_first=True)
         
         # BERT for encoding
-        self.bert = BertForQuestionAnswering.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+        self.bert = BertModel.from_pretrained('bert-base-uncased') #,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
@@ -232,10 +232,8 @@ class QuestionAnsweringBert(nn.Module):
 
         self.context_window = 512
         self.vocab_size = vocab_size
-        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.out = nn.Linear(self.bert.config.hidden_size, self.vocab_size)
-
-        self.softmax = nn.Softmax()
     
     def forward(self, prompts, questions):#questions, passages):
         
@@ -245,10 +243,10 @@ class QuestionAnsweringBert(nn.Module):
         for prompt,question in zip(prompts,questions):
             prompt_questions.append("[CLS] " + prompt + " [SEP] " + question)
         encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
-        output = self.bert(input_ids=encoding['input_ids'],
-                attention_mask=encoding['attention_mask'])
+        output = self.bert(input_ids=encoding['input_ids'].to(device=self.device),
+                attention_mask=encoding['attention_mask'].to(device=self.device))
         
-        return self.out(output["pooler_output"].to(self.device))
+        return self.out(output["pooler_output"].to(device=self.device))
         
 class Trajectory(object):
 
