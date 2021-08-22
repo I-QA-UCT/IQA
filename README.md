@@ -13,8 +13,32 @@ pip install https://github.com/Microsoft/TextWorld/archive/rebased-interactive-q
 pip install -U spacy
 python -m spacy download en
 pip install tqdm h5py visdom pyyaml
-conda install pytorch torchvision cudatoolkit=9.2 -c pytorch
+conda install pytorch torchvision cudatoolkit=9.2 -c pytorch (Or later versions work fine)
 pip install gym==0.15.4 (Dependency Issue with Original Code)
+conda install h5py (Dependency Issue with Original Code)
+pip install wandb (Only for logging to wandb)
+```
+
+## GAT Dependencies
+```
+conda install pytorch-geometric -c rusty1s -c conda-forge
+pip install nltk==3.3
+pip install matplotlib==2.2.3
+pip install transformers==4.9.2
+```
+
+## Stanford OpenIE Downloads
+Download CoreNLP and English model jar from [https://stanfordnlp.github.io/CoreNLP/](CoreNLP website). Unzip everything. Place the English model jar in the CoreNLP directory, and place the CoreNLP directory in IQA directory. 
+
+NOTE: The CoreNLP directory should be labelled "stanford-corenlp-4.2.2".
+
+
+## Other Download Files
+The NLTK punkt dataset needed to be downloaded in order to tokenize state descriptions for the KG class. It can be downloaded by opening the python interpreter with the command "python", and running the following:
+
+```
+>>> import nltk
+>>> nltk.download(punkt)
 ```
 
 ## Test Set
