@@ -226,9 +226,8 @@ class QuestionAnsweringBert(nn.Module):
     def __init__(self,vocab_size,hidden_size=64):
         super(QuestionAnsweringBert,self).__init__()
 
-        self.bert = BertModel.from_pretrained('distilbert-base-uncased',output_hidden_states=True)
-        self.tokenizer = BertTokenizerFast.from_pretrained('distilbert-base-uncased')
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.bert = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
+        self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         self.hidden_size = hidden_size
 
         self.context_window = 512
@@ -248,9 +247,8 @@ class QuestionAnsweringBert(nn.Module):
         encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
         output = self.bert(input_ids=encoding['input_ids'],
                 attention_mask=encoding['attention_mask'])
-        out = self.out(output["pooler_output"]) ## extract the 1st token's embeddings
         
-        return self.softmax(out)
+        return self.out(output["pooler_output"].to(self.device))
         
 class Trajectory(object):
 

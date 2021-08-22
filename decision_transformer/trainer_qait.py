@@ -329,6 +329,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model = QuestionAnsweringBert(vocab_size=1654)
+    model = model.cuda()
     model.train()
     
     optimizer = torch.optim.AdamW(
