@@ -463,7 +463,7 @@ class AnswerPointer(torch.nn.Module):
             self.w_2 = torch.nn.Linear(block_hidden_dim, 1)
 
     def forward(self, M1, M2, mask, GAT):
-        X_concat = torch.cat([M1, M2, torch.cat([GAT] * len(M1[0])).unsqueeze(0)], dim=-1)
+        X_concat = torch.cat([M1, M2, torch.stack([GAT] * len(M1[0]),dim=1)], dim=-1)
         X = torch.relu(self.w_1(X_concat))
 
         X_advantage = torch.relu(self.w_1_advantage(X_concat))

@@ -28,13 +28,13 @@ pip install transformers==4.9.2
 ```
 
 ## Stanford OpenIE Downloads
-Download CoreNLP and English model jar from [https://stanfordnlp.github.io/CoreNLP/](CoreNLP website). Unzip everything. Place the English model jar in the CoreNLP directory, and place the CoreNLP directory in IQA directory. 
+Download CoreNLP and the English model jar file from [CoreNLP website](https://stanfordnlp.github.io/CoreNLP/). Unzip everything. Place the English model jar file in the CoreNLP directory, and place the CoreNLP directory in IQA directory. 
 
 NOTE: The CoreNLP directory should be labelled "stanford-corenlp-4.2.2".
 
 
 ## Other Download Files
-The NLTK punkt dataset needed to be downloaded in order to tokenize state descriptions for the KG class. It can be downloaded by opening the python interpreter with the command "python", and running the following:
+The NLTK punkt dataset needs to be downloaded in order to tokenize state descriptions in the KG class. It can be downloaded by opening the python interpreter with the command "python", and running the following:
 
 ```
 >>> import nltk

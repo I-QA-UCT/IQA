@@ -320,9 +320,9 @@ def train(data_path):
         # push qa experience into qa replay buffer
         for b in range(batch_size):  # data points in batch
             # if the agent is not in the correct state, do not push it into replay buffer
-            if np.sum(sufficient_info_reward_np[b]) == 0.0:
-                continue
-            agent.qa_replay_memory.push(False, qa_reward_np[b], answerer_input[b], questions[b], answers[b])
+            # if np.sum(sufficient_info_reward_np[b]) == 0.0:
+            #     continue
+            agent.qa_replay_memory.push(False, qa_reward_np[b], adj_mat, answerer_input[b], questions[b], answers[b])
 
         # assign sufficient info reward and counting reward to the corresponding steps
         counting_rewards_np = np.stack(counting_rewards_np, 1)  # batch x game step

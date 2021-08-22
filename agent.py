@@ -780,17 +780,27 @@ class Agent:
         transitions = self.qa_replay_memory.sample(self.replay_batch_size)
         batch = qa_memory.qa_Transition(*zip(*transitions))
 
+        adj_mat_list = batch.adj_mat
+        temp1 = []
+        for adj in adj_mat_list:
+            temp1.append(len(adj.x))
+        
+        loader = DataLoader(adj_mat_list, batch_size=self.replay_batch_size)
+        batch_gat = next(iter(loader))
+        gat_out = self.GAT(batch_gat, temp1)
+
         observation_list = batch.observation_list
         quest_list = batch.quest_list
         answer_strings = batch.answer_strings
         answer_position = np.array(_words_to_ids(answer_strings, self.word2id))
         groundtruth = to_pt(answer_position, self.use_cuda)  # batch
 
+
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
         
         input_observation, input_observation_char, observation_id_list =  self.get_agent_inputs(observation_list)
 
-        answer_distribution, _, _ = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online")  # batch x vocab
+        answer_distribution, _, _ = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, gat_out, use_model="online")  # batch x vocab
 
         batch_loss = NegativeLogLoss(answer_distribution, groundtruth)  # batch
         return torch.mean(batch_loss)
