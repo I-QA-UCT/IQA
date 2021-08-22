@@ -49,7 +49,7 @@ class BertEmbedder(nn.Module):
 
     def embed(self, string):
         encoding = self.tokenizer(string, return_tensors="pt")
-        input_ids = encoding["input_ids"]#.to(self.device)
+        input_ids = encoding["input_ids"].to(self.device)
         # print("in ids:", input_ids.size())
 
         if input_ids.size(-1) > 512:
