@@ -236,11 +236,11 @@ class QuestionAnsweringDataLoader(Dataset):
 
 class QuestionAnsweringTrainer(Trainer):
 
-    def __init__(self,model, optimizer, loss_fn, batch_size, get_batch=None, data="dqn_loc.json" ,**kwargs):
+    def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
         self.dataset = QuestionAnsweringDataLoader(data)
-        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, **kwargs)
+        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, num_workers=num_workers)
         self.choice2id = self.dataset
 
     
@@ -358,15 +358,12 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--data', type=str, default="random_rollouts.json")
     
-    args = parser.parse_args()
-    
-    parser = argparse.ArgumentParser()
     parser.add_argument('--directory', type=str, default="./decision_transformer/saved_models")
     parser.add_argument('--env', type=str, default="qa_random_rollouts_location")
     parser.add_argument('--max_iters', type=int, default=100)
     parser.add_argument('--num_steps_per_iter', type=int, default=10)
 
-    env_args = parser.parse_args()
+    args = vars(parser.parse_args())
 
     model = QuestionAnsweringBert(vocab_size=1654)
     if torch.cuda.is_available():
@@ -378,13 +375,22 @@ if __name__ == "__main__":
         weight_decay=1e-4,
     )
     loss_fn = torch.nn.CrossEntropyLoss()
-    trainer = QuestionAnsweringTrainer(model, optimizer, loss_fn, **vars(args))
-    epochs = env_args['max_iters']
-    steps_per_epoch = env_args['num_steps_per_iter']
+    
+    trainer = QuestionAnsweringTrainer(
+        model,
+        optimizer,
+        loss_fn, 
+        batch_size=args["batch_size"],
+        num_workers=args["num_workers"],
+        data=args["data"],
+    )
+    
+    epochs = args['max_iters']
+    steps_per_epoch = args['num_steps_per_iter']
 
     max_accuracy = 0
     for epoch in range(epochs):
         logs = trainer.train_iteration(steps_per_epoch, iter_num=epoch, print_logs=True)
         if logs['training/QA_accuracy'] > max_accuracy:
             max_accuracy = logs['training/QA_accuracy']
-            torch.save(model,f"{env_args['directory']}/{env_args['env']}")
+            torch.save(model,f"{args['directory']}/{args['env']}")
