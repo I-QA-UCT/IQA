@@ -427,7 +427,7 @@ class Agent:
         else:
             return " ".join([self.word_vocab[verb], self.word_vocab[adj], self.word_vocab[noun]])
 
-    def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words):
+    def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, use_ac=True):
         """
         choose and action randomly
         """
@@ -435,7 +435,8 @@ class Agent:
             batch_size = len(obs)
             word_indices_random = self.choose_random_command(batch_size, len(self.word_vocab), possible_words)
             chosen_indices = word_indices_random
-            chosen_strings = self.get_chosen_strings(chosen_indices)
+            # Select admissible commands that are in the form action modifier object
+            chosen_strings = random.choice([[command] for command in infos["admissible_commands"][0] if command.count(" ") < 3]) if use_ac else self.get_chosen_strings(chosen_indices)
 
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
@@ -483,53 +484,54 @@ class Agent:
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
+        
+    # def command_to_id(self,command):
+    #     act, mod, obj = "", "</s>" , "<pad>" 
+            
+    #     command = command.split()
+
+    #     if len(command) == 3:
+    #         act, mod, obj = command
+    #     elif len(command) == 2:
+    #         act,obj,mod = *command, "</s>"
+    #     elif len(command) == 1:
+    #             act = command[0]
     
-    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observation,questions,returns_to_go,model=None):
+    #     return [self.word2id[act],self.word2id[mod],self.word2id[obj]]
+                
+    # def pad_input(self,sentence,question,seq_len):
+        
+    #     # sentences_to_ids = []
+    #     # for sentence in sentences:
+    #         # print(sentence)
+    #     sentence = "<s> "+ sentence + " <|> " +question + " </s>"
+    #     # If word doesn't exist - return <unk>
+    #     sentence_ids = [self.word2id.get(word,1) for word in sentence.split()]
+
+    #     diff = len(sentence_ids) - seq_len
+
+    #     if diff > 0:
+    #         del sentence_ids[-(diff+1):-1]
+    #     elif diff < 0:
+    #         sentence_ids.extend(abs(diff)*[0])
+
+    #         # sentences_to_ids.append(sentence_ids)
+    #     return sentence_ids
+
+    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
         """
-
-        def command_to_id(command):
-            act, mod, obj = "", "</s>" , "<pad>" 
-            
-            # for commands in commands_per_step:
-            command = command.split()
-
-            if len(command) == 3:
-                act, mod, obj = command
-            elif len(command) == 2:
-                act,obj,mod = *command, "</s>"
-            elif len(command) == 1:
-                    act = command[0]
-
-            return [self.word2id[act],self.word2id[mod],self.word2id[obj]]
-            
-        def pad_input(sentence,question,seq_len):
-        
-            sentence = "<s> "+ sentence + " <|> " +question + " </s>"
-            # If word doesn't exist - return <unk>
-            sentence_ids = [self.word2id.get(word,1) for word in sentence.split()]
-
-            diff = len(sentence_ids) - seq_len
-
-            if diff > 0:
-                del sentence_ids[-(diff+1):-1]
-            elif diff < 0:
-                sentence_ids.extend(abs(diff)*[0])
-                            
-            return sentence_ids
 
         with torch.no_grad():
             batch_size = len(obs)
             chosen_indices = []
             chosen_strings = []
 
-            for i in range(batch_size):
-                act,obj,mod,answer = model.get_command(pad_input(input_observation[i],questions[i],150),command_to_id(commands_per_step[i][-1]),returns_to_go[i],timesteps)
-
-                word_indices_dt = [act,obj,mod]
-                chosen_indices.append(word_indices_dt)
+            act,obj,mod = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps)
+            word_indices_dt = [act,obj,mod]
+            chosen_indices.append(word_indices_dt)
             
             chosen_indices = torch.Tensor(chosen_indices).long()
             chosen_indices = torch.transpose(chosen_indices, 0, 1)
@@ -548,10 +550,10 @@ class Agent:
 
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
-            return chosen_strings, replay_info, answer
+            return chosen_strings, replay_info
 
 
-    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False,decision_transformer=False):
+    def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False,use_ac=True):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
@@ -574,7 +576,7 @@ class Agent:
                 else:
                     return self.act_greedy(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
             if random:
-                return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words)
+                return self.act_random(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words,use_ac=use_ac)
             batch_size = len(obs)
 
             local_word_masks_np = self.get_local_word_masks(possible_words)
@@ -715,6 +717,19 @@ class Agent:
         torch.nn.utils.clip_grad_norm_(self.online_net.parameters(), self.clip_grad_norm)
         self.optimizer.step()  # apply gradients
         return to_np(torch.mean(interaction_loss))
+
+    def qa_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None):
+        
+        with torch.no_grad():
+            batch_size = len(obs)
+            answers = []
+
+            # for i in range(batch_size):
+
+            answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps)
+                # answers.append(answer.cpu().item())
+
+        return [self.word_vocab[answer.cpu().item()]]
 
     def answer_question(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char, use_model="online"):
         """

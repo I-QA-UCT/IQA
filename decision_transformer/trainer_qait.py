@@ -240,12 +240,12 @@ class QuestionAnsweringTrainer(Trainer):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
         self.dataset = QuestionAnsweringDataLoader(data)
-        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=False, num_workers=num_workers)
+        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=True, num_workers=num_workers)
         self.choice2id = self.dataset
 
     
     def train_step(self):
-        total_loss = 0
+        total_losses = []
         hits = 0
         for batch in self.dataloader:
 
@@ -255,29 +255,27 @@ class QuestionAnsweringTrainer(Trainer):
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
 
-            total_loss += loss.detach().cpu().item()
-            hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach().cpu().item()
+            total_losses.append(loss.detach()) 
+            hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 
-        return total_loss, hits
+        return total_loss, hits.cpu().item()/len(self.dataset)
 
 
-    def train_iteration(self, num_steps, iter_num=0, print_logs=False):
+    def train_iteration(self, num_steps=0, iter_num=0, print_logs=False):
 
-        train_losses, train_accuracies = [], []
+
         logs = dict()
 
         train_start = time.time()
 
         self.model.train()
-        for step in range(num_steps):
-            train_loss, train_accuracy = self.train_step()
-            train_losses.append(train_loss)
-            train_accuracies.append(train_accuracy)
-            if self.scheduler is not None:
-                self.scheduler.step()
+
+        train_losses, train_accuracy = self.train_step()
+        if self.scheduler is not None:
+            self.scheduler.step()
 
         logs['time/training'] = time.time() - train_start
 
@@ -293,7 +291,7 @@ class QuestionAnsweringTrainer(Trainer):
         logs['time/evaluation'] = time.time() - eval_start
         logs['training/train_loss_mean'] = np.mean(train_losses)
         logs['training/train_loss_std'] = np.std(train_losses)
-        logs['training/QA_accuracy'] = np.mean(train_accuracies)
+        logs['training/QA_accuracy'] = train_accuracy
 
         for k in self.diagnostics:
             logs[k] = self.diagnostics[k]
@@ -361,7 +359,6 @@ if __name__ == "__main__":
     parser.add_argument('--directory', type=str, default="./decision_transformer/saved_models")
     parser.add_argument('--env', type=str, default="qa_random_rollouts_location")
     parser.add_argument('--max_iters', type=int, default=100)
-    parser.add_argument('--num_steps_per_iter', type=int, default=10)
 
     args = vars(parser.parse_args())
 
@@ -386,11 +383,10 @@ if __name__ == "__main__":
     )
     
     epochs = args['max_iters']
-    steps_per_epoch = args['num_steps_per_iter']
 
     max_accuracy = 0
     for epoch in range(epochs):
-        logs = trainer.train_iteration(steps_per_epoch, iter_num=epoch, print_logs=True)
-        if logs['training/QA_accuracy'] > max_accuracy:
+        logs = trainer.train_iteration(iter_num=epoch, print_logs=True)
+        if logs['training/QA_accuracy'] >= max_accuracy:
             max_accuracy = logs['training/QA_accuracy']
-            torch.save(model,f"{args['directory']}/{args['env']}")
+            torch.save(model,f"{args['directory']}/{args['env']}.pt")
