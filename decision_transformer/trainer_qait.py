@@ -194,9 +194,10 @@ class QuestionAnsweringDataLoader(Dataset):
 
                 prompt = []
                 for game_step in episode["steps"]:
-                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>",""))
+                    cleaned_state = " ".join(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split())
+                    prompt.append(cleaned_state)
                 
-                self.dataset.append((" ".join(prompt), episode["question"], word_encodings[episode["answer"]]))
+                self.dataset.append(("[SEP]".join(prompt), episode["question"], word_encodings[episode["answer"]]))
 
 
     def __len__(self):
@@ -250,7 +251,11 @@ class QuestionAnsweringTrainer(Trainer):
         for batch in self.dataloader:
 
             prompts, questions, answers = batch
-            output = self.model.forward(prompts, questions)
+            prompt_questions = []
+            for prompt, question in zip(prompts, questions):
+                prompt_questions.append( [ "[CLS] "+text + " [SEP] " + question for text in prompt.split("[SEP]")] )
+            output = self.model.forward(prompt_questions)
+            print(output.size())
             answers_tensor = torch.tensor(answers,device=self.model.device)
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()
@@ -261,7 +266,7 @@ class QuestionAnsweringTrainer(Trainer):
             total_losses.append(loss.detach()) 
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 
-        return total_loss, hits.cpu().item()/len(self.dataset)
+        return total_losses, hits.cpu().item()/len(self.dataset)
 
 
     def train_iteration(self, num_steps=0, iter_num=0, print_logs=False):

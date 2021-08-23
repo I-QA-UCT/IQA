@@ -226,27 +226,31 @@ class QuestionAnsweringBert(nn.Module):
     def __init__(self,vocab_size,hidden_size=64):
         super(QuestionAnsweringBert,self).__init__()
 
+        self.bert_encoder = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
         self.bert = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
+
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         self.hidden_size = hidden_size
 
         self.context_window = 512
         self.vocab_size = vocab_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # self.lstm = nn.LSTM(self.bert.config.hidden_size, self.hidden_size, 1)
         self.out = nn.Linear(self.bert.config.hidden_size, self.vocab_size)
     
-    def forward(self, prompts, questions):#questions, passages):
+    def forward(self, prompt_questions):#questions, passages):
         
-        # batch_size = len(prompts)
-        # outputs = []
-        prompt_questions = []
-        for prompt,question in zip(prompts,questions):
-            prompt_questions.append("[CLS] " + prompt + " [SEP] " + question)
-        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
-        output = self.bert(input_ids=encoding['input_ids'].to(device=self.device),
-                attention_mask=encoding['attention_mask'].to(device=self.device))
+        encoded_states = []
+        for prompt_question in prompt_questions:
+            encoding = self.tokenizer(prompt_question, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
+            output = self.bert_encoder(input_ids=encoding['input_ids'].to(device=self.device),
+                    attention_mask=encoding['attention_mask'].to(device=self.device))
+            
+            encoded_states.append(output["pooler_output"].to(device=self.device))
+        bert_out = self.bert(input_embeds=torch.stack(encoded_states,dim=1))
         
-        return self.out(output["pooler_output"].to(device=self.device))
+        return self.out(bert_out)
         
 class Trajectory(object):
 
