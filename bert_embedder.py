@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer, AutoModel
 
 from torch import nn
+import os
 
 
 class BertEmbedder(nn.Module):
@@ -16,9 +17,11 @@ class BertEmbedder(nn.Module):
         super().__init__()
 
         self.device = device
-
         self.size = size
         self.bert_fine_tune_layers = bert_fine_tune_layers
+
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
         model_name = "prajjwal1/bert-" + self.size
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name).to(self.device)

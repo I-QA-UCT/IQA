@@ -20,6 +20,8 @@ from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences
 from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
 import KG
+from torch_geometric.data import Data
+from bert_embedder import BertEmbedder
 
 class Agent:
     def __init__(self):
@@ -54,15 +56,12 @@ class Agent:
 
         # self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
         self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
+        self.bert = BertEmbedder(self.config['gat']['bert_size'], [], self.device)
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
         self.optimizer = torch.optim.Adam(list(self.online_net.parameters())+list(self.GAT.parameters()), lr=self.config['training']['optimizer']['learning_rate'])
-        self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
-        
-        
-
-        
+        self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']  
 
     def load_config(self):
         """
@@ -237,7 +236,7 @@ class Agent:
             else:
                 checkpoint = torch.load(load_from, map_location='cpu')
             self.online_net.load_state_dict(checkpoint['online_net'])
-            self.GAT.load_state_dict(checkpoint['gat'])
+            # self.GAT.load_state_dict(checkpoint['gat'])
         except:
             print("Failed to load checkpoint...")
 
@@ -589,22 +588,47 @@ class Agent:
         if data is None:
             return None
 
-        
-        adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        ents_list, next_ents_list, adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         
         temp1 = []
         temp2 = []
-        for adj, next_adj in zip(adj_mat_list, next_adj_mat_list):
-            temp1.append(len(adj.x))
-            temp2.append(len(next_adj.x))
+        kg_info_data = []
+        next_kg_info_data = []
+        for ents, next_ents, adj_mat, next_adj_mat in zip(ents_list, next_ents_list, adj_mat_list, next_adj_mat_list):
+            temp1.append(len(ents.keys()))
+            edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
+            embeds = []
+            for i in list(ents.keys()):
+                graph_node_text = i.replace('_', ' ')
+                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                #Summarizer
+                node_embedding= node_embedding.mean(dim=0) 
+                embeds.append(node_embedding)
+
+            data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
+            kg_info_data.append(data)
+
+            temp2.append(len(next_ents.keys()))
+            next_edge_index = torch.tensor(next_adj_mat, dtype=torch.long, device = self.device)
+            next_embeds = []
+            for i in list(next_ents.keys()):
+                graph_node_text = i.replace('_', ' ')
+                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                #Summarizer
+                node_embedding= node_embedding.mean(dim=0)
+                next_embeds.append(node_embedding)
+
+            next_data = Data(x=torch.stack(next_embeds), edge_index=next_edge_index).to(self.device)
+            next_kg_info_data.append(next_data)
+
 
         batch_size = len(actual_n_list)
-        
-        loader = DataLoader(adj_mat_list, batch_size=batch_size)
+
+        loader = DataLoader(kg_info_data, batch_size=batch_size)
         batch = next(iter(loader))
         gat_out = self.GAT(batch, temp1)
 
-        next_loader = DataLoader(next_adj_mat_list, batch_size=batch_size)
+        next_loader = DataLoader(next_kg_info_data, batch_size=batch_size)
         next_batch = next(iter(next_loader))
 
         next_gat_out = self.GAT(next_batch,temp2)
@@ -780,12 +804,27 @@ class Agent:
         transitions = self.qa_replay_memory.sample(self.replay_batch_size)
         batch = qa_memory.qa_Transition(*zip(*transitions))
 
+        ents_list = batch.ents
         adj_mat_list = batch.adj_mat
         temp1 = []
-        for adj in adj_mat_list:
-            temp1.append(len(adj.x))
-        
-        loader = DataLoader(adj_mat_list, batch_size=self.replay_batch_size)
+        kg_info_data = []
+        for ents, adj_mat in zip(ents_list, adj_mat_list):
+            temp1.append(len(ents.keys()))
+            edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
+            embeds = []
+            for i in list(ents.keys()):
+                graph_node_text = i.replace('_', ' ')
+                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                #Summarizer
+                node_embedding= node_embedding.mean(dim=0) 
+
+                embeds.append(node_embedding)
+
+            data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
+            kg_info_data.append(data)
+
+        #Check kg_info_data
+        loader = DataLoader(kg_info_data, batch_size=self.replay_batch_size)
         batch_gat = next(iter(loader))
         gat_out = self.GAT(batch_gat, temp1)
 

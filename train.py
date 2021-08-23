@@ -142,6 +142,7 @@ def train(data_path):
         # Start game - get initial observation and infos
         obs, infos = env.reset()
         batch_size = len(obs)
+        agent.state.reset_state()
         
         # generate question-answer pairs here
         questions, answers, reward_helper_info = game_generator.generate_qa_pairs(infos, question_type=agent.question_type, seed=episode_no)
@@ -214,14 +215,14 @@ def train(data_path):
             input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
             # We feed these observations along with the question to the agent to produce an action
             # commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=act_randomly)
+            
             commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands, random=act_randomly)
             # We append each game in the batches commands to a 2d array
             for i in range(batch_size):
                 commands_per_step[i].append(commands[i])
 
+            replay_info = [copy.deepcopy(agent.state.entities), agent.state.adj_matrix, observation_strings_w_history, questions, possible_words] + replay_info
 
-            adj_mat = agent.state.graph_state_rep
-            replay_info = [adj_mat, observation_strings_w_history, questions, possible_words] + replay_info
             # get the real admissible commands from environment i.e the true valid commands for the game step
             admissible_commands = [set(item) - set(["look", "wait", "inventory"]) for item in infos["admissible_commands"]]
             # get valid command reward 
@@ -320,9 +321,9 @@ def train(data_path):
         # push qa experience into qa replay buffer
         for b in range(batch_size):  # data points in batch
             # if the agent is not in the correct state, do not push it into replay buffer
-            # if np.sum(sufficient_info_reward_np[b]) == 0.0:
-            #     continue
-            agent.qa_replay_memory.push(False, qa_reward_np[b], adj_mat, answerer_input[b], questions[b], answers[b])
+            if np.sum(sufficient_info_reward_np[b]) == 0.0:
+                continue
+            agent.qa_replay_memory.push(False, qa_reward_np[b], copy.deepcopy(agent.state.entities), agent.state.adj_matrix, answerer_input[b], questions[b], answers[b])
 
         # assign sufficient info reward and counting reward to the corresponding steps
         counting_rewards_np = np.stack(counting_rewards_np, 1)  # batch x game step
@@ -337,11 +338,13 @@ def train(data_path):
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
-                batch_adj_mat, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                batch_ents, batch_adj_mat, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
-                agent.command_generation_replay_memory.push(is_prior, batch_adj_mat, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                  
+                agent.command_generation_replay_memory.push(is_prior, batch_ents, batch_adj_mat, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+
                 if masks_np[i][b] == 0.0:
                     break
         
@@ -386,16 +389,16 @@ def train(data_path):
             if eval_qa_reward + eval_sufficient_info_reward > best_sum_reward_so_far:
                 best_sum_reward_so_far = eval_qa_reward + eval_sufficient_info_reward
                 agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
-                out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
-                out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
+                # out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
+                # out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
 
         # save model
         elif agent.save_checkpoint:
             if running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg() > best_sum_reward_so_far:
                 best_sum_reward_so_far = running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg()
                 agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
-                out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
-                out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
+                # out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
+                # out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
 
 
        

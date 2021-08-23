@@ -42,7 +42,6 @@ class SupplementaryKG(object):
 
         self.device = device
         self.bert = BertEmbedder(bert_size, [], self.device)
-        self.state_ent_emb = None
         self.embeds = []
 
         init_openIE()
@@ -86,9 +85,6 @@ class SupplementaryKG(object):
         plt.show()
 
     def update_state(self, visible_state, prev_action=None):
-
-        if prev_action == 'restart':
-            self.graph_state.clear()
 
         #Format visible state, and set to self
         visible_state = visible_state.split('-')
@@ -222,6 +218,13 @@ class SupplementaryKG(object):
 
         return
     
+    def reset_state(self):
+        self.graph_state.clear()
+        self.entities.clear()
+        self.entity_nums =0
+        self.embeds.clear()
+
+
     def state_ent_emb_bert(self):
 
         entities = list(self.entities.keys())
@@ -233,8 +236,6 @@ class SupplementaryKG(object):
             #Summarizer
             node_embedding= node_embedding.mean(dim=0) 
             self.embeds.append(node_embedding)
-        
-        self.state_ent_emb = torch.nn.Embedding.from_pretrained(torch.stack(self.embeds), freeze=True)
     
     def get_state_representation_bert(self):
         
@@ -254,7 +255,7 @@ class SupplementaryKG(object):
 
         self.state_ent_emb_bert()
 
-        data = Data(x=self.state_ent_emb.weight, edge_index=edge_index).to(self.device)
+        data = Data(x=torch.stack(self.embeds), edge_index=edge_index).to(self.device)
 
         return data
 
