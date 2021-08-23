@@ -550,34 +550,26 @@ class ICM_Inverse(torch.nn.Module):
     ICM - Inverse Model - used to predict action from two consecutive states. This enables the feature model to learn a valuable feature representation.
     """
 
-    def __init__(self, input_size, hidden_size, output_size,vocab_size):
+    def __init__(self, input_size, hidden_size,vocab_size):
         super(ICM_Inverse, self).__init__()
         
         self.action_decoder = torch.nn.Sequential(
             torch.nn.Linear(input_size,hidden_size),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,hidden_size),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,vocab_size),
-            torch.nn.Softmax(dim=-1))
+            torch.nn.Linear(hidden_size,vocab_size))
+
         self.modifier_decoder = torch.nn.Sequential(
             torch.nn.Linear(input_size+vocab_size,hidden_size),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,hidden_size),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,vocab_size),
-            torch.nn.Softmax(dim=-1))
+            torch.nn.Linear(hidden_size,vocab_size))
+
         self.object_decoder = torch.nn.Sequential(
             torch.nn.Linear(input_size+2*vocab_size,hidden_size),
             torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,hidden_size),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_size,vocab_size),
-            torch.nn.Softmax(dim=-1))
+            torch.nn.Linear(hidden_size,vocab_size))
 
     def forward(self, state_feature, next_state_feature):
         input = torch.cat([state_feature, next_state_feature], dim=-1)
-        # rep = self.inverse_net(input)
         rep = input
         action_dist = self.action_decoder(rep)
         modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
@@ -642,7 +634,7 @@ class ICM(torch.nn.Module):
             state_input_size, self.hidden_size, self.feature_size)
 
         self.inverse_model = ICM_Inverse(
-            feature_size*2, self.hidden_size, action_size,vocab_size)
+            feature_size*2, self.hidden_size,vocab_size)
         self.forward_model = ICM_Forward(
             feature_size+action_size, self.hidden_size, feature_size)
         
@@ -658,9 +650,9 @@ class ICM(torch.nn.Module):
         self.feature_size = self.config['icm']['state_feature_size']
         self.use_inverse_model = self.config['icm']['inverse_reward']
         self.use_feature_net = self.config['icm']['use_feature_net']
-        self.inverse_loss_action_weight = ['icm']['inverse_action_weight']
-        self.inverse_loss_modifier_weight = ['icm']['inverse_modifier_weight']
-        self.inverse_loss_object_weight = ['icm']['inverse_object_weight']
+        self.inverse_loss_action_weight = self.config['icm']['inverse_action_weight']
+        self.inverse_loss_modifier_weight = self.config['icm']['inverse_modifier_weight']
+        self.inverse_loss_object_weight = self.config['icm']['inverse_object_weight']
 
     def get_feature(self, state):
         """
@@ -685,8 +677,9 @@ class ICM(torch.nn.Module):
             # Using max pooling of transformer layers
             state_feature, _ = torch.max(state, 1)
             next_state_feature,_ = torch.max(next_state, 1)
-
-        return self.inverse_model(state_feature, next_state_feature)
+            
+        # Testing using difference
+        return self.inverse_model(state_feature, next_state_feature - state_feature)
 
     def get_predicted_state(self, state, action):
         """
@@ -718,12 +711,17 @@ class ICM(torch.nn.Module):
 
         """
         predicted_action, predicted_modifier, predicted_object = self.get_predicted_action(state, next_state)
+
         
-        action_probs = torch.gather(predicted_action,-1,action)[:,0]
-        modifier_probs = torch.gather(predicted_modifier,-1,action)[:,1]
-        object_probs = torch.gather(predicted_object,-1,action)[:,2]
-        loss = -(self.inverse_loss_action_weight*torch.log(action_probs)+self.inverse_loss_modifier_weight*torch.log(modifier_probs)+self.inverse_loss_object_weight*torch.log(object_probs))
-        return loss
+        action_targets = action[:,0]
+        modifier_targets = action[:,1]
+        object_targets = action[:,2]
+
+        action_loss = F.cross_entropy(predicted_action,action_targets)
+        modifier_loss = F.cross_entropy(predicted_modifier,modifier_targets)
+        object_loss = F.cross_entropy(predicted_object,object_targets)
+
+        return self.inverse_loss_action_weight*action_loss+self.inverse_loss_modifier_weight*modifier_loss+self.inverse_loss_object_weight*object_loss
 
     def get_forward_loss(self, state, action, next_state):
         """
