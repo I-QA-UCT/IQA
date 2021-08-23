@@ -5,7 +5,7 @@ from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
 
 from transformers import BertTokenizer
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import time
 import json
@@ -177,27 +177,36 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
 
-    def __init__(self,data):
+    def __init__(self,data , tokenizer=None, context_window=180):
         offline_rl_data_filename = RELATIVE_PATH + data
         word_encodings_filename = WORD_ENCODINGS
-
+        bert_tokenizer = tokenizer
         with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
             word_encodings = json.load(word_encodings_data)
             self.vocab_size = len(word_encodings)
-            prompts, questions, answers = [], [], []
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
                 episode = json.loads(sample_entry)
 
-                prompt = []
-                for game_step in episode["steps"]:
-                    cleaned_state = " ".join(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split())
-                    prompt.append(cleaned_state)
+                prompt = deque()
                 
-                self.dataset.append(("[SEP]".join(prompt), episode["question"], word_encodings[episode["answer"]]))
+                token_count = 0
+
+                for i in range(len(episode["steps"])-1,-1,-1):
+                    
+                    game_step = episode["steps"][i]
+                    cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","")
+                    
+                    if token_count < context_window - len(episode["question"].split()) - 10:
+                        prompt.appendleft(" ".join(cleaned_state))
+                        token_count += len(cleaned_state)
+                    else:
+                        text_prompt = "[CLS] "+ " ".join(list(prompt)) + " [SEP] " +  episode["question"] 
+                
+                self.dataset.append((text_prompt, word_encodings[episode["answer"]]))
 
 
     def __len__(self):
@@ -205,35 +214,6 @@ class QuestionAnsweringDataLoader(Dataset):
 
     def __getitem__(self, idx):
         return self.dataset[idx]
-
-        
-    def __iter__(self):
-
-        with open(self.offline_rl_data_filename) as offline_rl_data,open(self.word_encodings_filename) as word_encodings_data:
-            
-            encodings = json.load(word_encodings_data)
-            vocab_size = len(encodings)
-            choices = list(encodings.keys())
-
-
-            prompts, questions, answers = [], [], []
-
-            for episode_no,sample_entry in enumerate(offline_rl_data):
-
-                episode = json.loads(sample_entry)
-                questions.append(episode["question"])
-                answers.append(episode["answer"])
-
-                prompt = []
-                for game_step in episode["steps"]:
-                    prompt.append(game_step["state"].replace("<s>","").replace("</s>","").replace("<|>",""))
-                
-                # prompts.append(" ".join(prompt))
-                # if episode_no % self.batch_size == 0:
-                yield " ".join(prompt), choices, episode["question"], episode["answer"]
-
-                # yield prompts, choices, questions, answers
-                    # prompts, questions, answers = [], [], []
 
 class QuestionAnsweringTrainer(Trainer):
 
@@ -245,17 +225,24 @@ class QuestionAnsweringTrainer(Trainer):
         self.choice2id = self.dataset
 
     
+class QuestionAnsweringTrainer(Trainer):
+
+    def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
+        super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
+        
+        self.dataset = QuestionAnsweringDataLoader(data,model.tokenizer,model.context_window)
+        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=True, num_workers=num_workers)
+        self.choice2id = self.dataset
+
+    
     def train_step(self):
         total_losses = []
         hits = 0
         for batch in self.dataloader:
 
-            prompts, questions, answers = batch
-            prompt_questions = []
-            for prompt, question in zip(prompts, questions):
-                prompt_questions.append( [ "[CLS] "+text + " [SEP] " + question for text in prompt.split("[SEP]")] )
-            output = self.model.forward(prompt_questions)
-            print(output.size())
+            prompt_question, answers = batch
+
+            output = self.model.forward([pq for pq in prompt_question])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()

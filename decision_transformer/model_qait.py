@@ -226,7 +226,7 @@ class QuestionAnsweringBert(nn.Module):
     def __init__(self,vocab_size,hidden_size=64):
         super(QuestionAnsweringBert,self).__init__()
 
-        self.bert_encoder = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
+        # self.bert_encoder = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
         self.bert = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
 
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
@@ -240,18 +240,36 @@ class QuestionAnsweringBert(nn.Module):
         self.out = nn.Linear(self.bert.config.hidden_size, self.vocab_size)
     
     def forward(self, prompt_questions):#questions, passages):
+        """
         
-        encoded_states = []
-        for prompt_question in prompt_questions:
-            encoding = self.tokenizer(prompt_question, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
-            output = self.bert_encoder(input_ids=encoding['input_ids'].to(device=self.device),
+        """
+
+        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
+
+        output = self.bert(input_ids=encoding['input_ids'].to(device=self.device),
                     attention_mask=encoding['attention_mask'].to(device=self.device))
+
+        # bert_out = self.bert(inputs_embeds=output["pooler_output"].unsqueeze(0).to(device=self.device))
+        
+        return self.out(output["pooler_output"].to(device=self.device))
+    
+    # def forward(self, prompt_questions):#questions, passages):
+    #     """
+        
+    #     """
+    #     bert_outs = []
+    #     for pq in prompt_questions:
+    #     # for i in range(len(prompt_questions['input_ids'])):
+    #         encoding = self.tokenizer(pq, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
+
+    #         output = self.bert_encoder(input_ids=encoding['input_ids'].to(device=self.device),
+    #                 attention_mask=encoding['attention_mask'].to(device=self.device))
+
+    #         bert_out = self.bert(inputs_embeds=output["pooler_output"].unsqueeze(0).to(device=self.device))
             
-            encoded_states.append(output["pooler_output"].to(device=self.device))
-        bert_out = self.bert(input_embeds=torch.stack(encoded_states,dim=1))
-        
-        return self.out(bert_out)
-        
+    #         bert_outs.append(bert_out["pooler_output"])
+
+    #     return self.out(torch.cat(bert_outs))
 class Trajectory(object):
 
     def __init__(self):
