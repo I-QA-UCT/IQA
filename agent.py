@@ -56,7 +56,7 @@ class Agent:
 
         # self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
         self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
-        self.bert = BertEmbedder(self.config['gat']['bert_size'], [], self.device)
+        # self.bert = BertEmbedder(self.config['gat']['bert_size'], [], self.device)
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
@@ -599,11 +599,12 @@ class Agent:
             edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                graph_node_text = i.replace('_', ' ')
-                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                #Summarizer
-                node_embedding= node_embedding.mean(dim=0) 
-                embeds.append(node_embedding)
+                # graph_node_text = i.replace('_', ' ')
+                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                # #Summarizer
+                # node_embedding= node_embedding.mean(dim=0) 
+                # embeds.append(node_embedding)
+                embeds.append(self.state.bert_lookup[i])
 
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
@@ -612,11 +613,12 @@ class Agent:
             next_edge_index = torch.tensor(next_adj_mat, dtype=torch.long, device = self.device)
             next_embeds = []
             for i in list(next_ents.keys()):
-                graph_node_text = i.replace('_', ' ')
-                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                #Summarizer
-                node_embedding= node_embedding.mean(dim=0)
-                next_embeds.append(node_embedding)
+                # graph_node_text = i.replace('_', ' ')
+                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                # #Summarizer
+                # node_embedding= node_embedding.mean(dim=0)
+                # next_embeds.append(node_embedding)
+                next_embeds.append(self.state.bert_lookup[i])
 
             next_data = Data(x=torch.stack(next_embeds), edge_index=next_edge_index).to(self.device)
             next_kg_info_data.append(next_data)
@@ -813,12 +815,13 @@ class Agent:
             edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                graph_node_text = i.replace('_', ' ')
-                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                #Summarizer
-                node_embedding= node_embedding.mean(dim=0) 
+                # graph_node_text = i.replace('_', ' ')
+                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+                # #Summarizer
+                # node_embedding= node_embedding.mean(dim=0) 
 
-                embeds.append(node_embedding)
+                # embeds.append(node_embedding)
+                embeds.append(self.state.bert_lookup[i])
 
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)

@@ -43,6 +43,7 @@ class SupplementaryKG(object):
         self.device = device
         self.bert = BertEmbedder(bert_size, [], self.device)
         self.embeds = []
+        self.bert_lookup = {}
 
         init_openIE()
 
@@ -230,12 +231,16 @@ class SupplementaryKG(object):
         entities = list(self.entities.keys())
         num_current = len(self.embeds)
         for i in range(num_current, len(entities)):
-            graph_node_text = entities[i].replace('_', ' ')
-            node_embedding = self.bert.embed(graph_node_text).squeeze(0)
+            if entities[i] in self.bert_lookup:
+                self.embeds.append(self.bert_lookup[entities[i]])
+            else:
+                graph_node_text = entities[i].replace('_', ' ')
+                node_embedding = self.bert.embed(graph_node_text).squeeze(0)
 
-            #Summarizer
-            node_embedding= node_embedding.mean(dim=0) 
-            self.embeds.append(node_embedding)
+                #Summarizer
+                node_embedding= node_embedding.mean(dim=0) 
+                self.embeds.append(node_embedding)
+                self.bert_lookup[entities[i]] = node_embedding
     
     def get_state_representation_bert(self):
         

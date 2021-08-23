@@ -373,7 +373,7 @@ def train(data_path):
             # print("rm -f {}".format(" ".join(files_to_delete)))
             os.system("rm -f {}".format(" ".join(files_to_delete)))
         episode_no += batch_size
-
+        print("Total Entities:", len(agent.state.bert_lookup.keys()))
         time_2 = datetime.datetime.now()
         print("Episode: {:3d} | time spent: {:s} | interaction loss: {:2.3f} | qa loss: {:2.3f} | rewards: {:2.3f} | qa acc: {:2.3f}/{:2.3f} | correct state: {:2.3f}/{:2.3f}".format(episode_no, str(time_2 - time_1).rsplit(".")[0], running_avg_correct_state_loss.get_avg(), running_avg_qa_loss.get_avg(), print_rewards, r_qa, running_avg_qa_reward.get_avg(), r_sufficient_info, running_avg_sufficient_info_reward.get_avg()))
 
