@@ -17,7 +17,11 @@ conda install pytorch torchvision cudatoolkit=9.2 -c pytorch (Or later versions 
 pip install gym==0.15.4 (Dependency Issue with Original Code)
 conda install h5py (Dependency Issue with Original Code)
 pip install wandb (Only for logging to wandb)
+pip install plotly (for plotting)
+pip install pandas (for plotting)
+pip install jsonlines (for plotting)
 ```
+
 
 ## Test Set
 Download the test set from [https://aka.ms/qait-testset](https://aka.ms/qait-testset). Unzip it.

@@ -115,6 +115,8 @@ class Agent:
         self.icm = self.config['icm']['enable']
         self.use_intrinsic_reward = self.config['icm']['use_intrinsic_reward']
         
+        # Freeze the encoding of state - i.e don't update transformers weights - only tune the dqn or policy
+        self.freeze_encoding = self.config['model']['freeze_encoding']
 
         # Set the random seed manually for reproducibility.
         self.random_seed = self.config['general']['random_seed']
@@ -202,6 +204,8 @@ class Agent:
         self.nlp = spacy.load('en_core_web_sm')
         self.single_word_verbs = set(["inventory", "look", "wait"])
         self.two_word_verbs = set(["go"])
+
+        
 
     def train(self):
         """
@@ -430,7 +434,13 @@ class Agent:
         Given input observation and question tensors, to get Q values of words or if using actor critic, the probability dists and state value.
         """
         model = self.online_net if use_model == "online" else self.target_net
-        match_representation_sequence = self.get_match_representations(
+
+        if self.freeze_encoding:
+            with torch.no_grad():
+                match_representation_sequence = self.get_match_representations(
+            input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
+        else:
+            match_representation_sequence = self.get_match_representations(
             input_observation, input_observation_char, input_quest, input_quest_char, use_model=use_model)
         
         # list of 3 tensors size of vocab
@@ -644,8 +654,7 @@ class Agent:
             for i in range(batch_size):
                 if self.prev_actions[-1][i] == "wait":
                     self.prev_step_is_still_interacting[i] = 0.0
-            # previous step is still interacting, this is because DQN requires one step extra computation
-
+            
             replay_info = [chosen_indices, value, action_log_probs, action_entropies, to_pt(
                 self.prev_step_is_still_interacting, self.use_cuda, "float")]
 
@@ -725,11 +734,15 @@ class Agent:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
             input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
             input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
+            if self.freeze_encoding:
+                with torch.no_grad():
+                    encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+                    encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            else:
+                encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+                encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
             
-            encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
-            encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
             action_inputs = torch.stack(action_list)
-
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)
             
             if self.online_net.curiosity_module.beta==0:
@@ -814,8 +827,14 @@ class Agent:
             input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
             input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
             
-            encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
-            encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            if self.freeze_encoding:
+                with torch.no_grad():
+                    encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+                    encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            else:
+                encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)
+                encoded_next_states = self.get_match_representations(input_next_state,input_next_state_chars,input_quest,input_quest_char)
+            
             action_inputs = torch.stack(action_list)
 
             encoded_actions,_ = self.online_net.word_embedding(action_inputs)

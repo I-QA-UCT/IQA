@@ -717,10 +717,10 @@ class ICM(torch.nn.Module):
         modifier_targets = action[:,1]
         object_targets = action[:,2]
 
-        action_loss = F.cross_entropy(predicted_action,action_targets)
-        modifier_loss = F.cross_entropy(predicted_modifier,modifier_targets)
-        object_loss = F.cross_entropy(predicted_object,object_targets)
-
+        action_loss = F.cross_entropy(predicted_action,action_targets,reduction='none')
+        modifier_loss = F.cross_entropy(predicted_modifier,modifier_targets,reduction='none')
+        object_loss = F.cross_entropy(predicted_object,object_targets,reduction='none')
+        
         return self.inverse_loss_action_weight*action_loss+self.inverse_loss_modifier_weight*modifier_loss+self.inverse_loss_object_weight*object_loss
 
     def get_forward_loss(self, state, action, next_state):

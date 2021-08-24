@@ -11,7 +11,7 @@ general:
 # Training Settings
 training:
   batch_size: 1                       # Number of games played in parallel
-  max_episode: 8280                 # Number of episodes to train
+  max_episode: 10000                 # Number of episodes to train
   learn_start_from_this_episode: 0    # Episodes of games played randomly to generate experience - only important for Value based methods
   target_net_update_frequency: 1000   # sync target net with online net per this many epochs - only important for Value based methods
   max_nb_steps_per_episode: 50        # after this many steps, a game is terminated
@@ -31,8 +31,8 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_location'
-  load_pretrained: True               # during test, enable this so that the agent load your pretrained model
+  experiment_tag: 'a2c_location_1_inverse_w_reward'
+  load_pretrained: False               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
@@ -66,13 +66,13 @@ a2c:
 # Intrinsic Curiosity Module Settings
 icm:
   enable: True
-  scaling_factor: 0
+  scaling_factor: 0.01
   beta: 0           
   lambda: 1
   hidden_size: 128
   state_feature_size: 128
   inverse_reward: True
-  use_intrinsic_reward: False
+  use_intrinsic_reward: True
   use_feature_net : False
   inverse_action_weight: 1
   inverse_modifier_weight: 0
@@ -109,3 +109,4 @@ model:
   block_dropout: 0.
   action_scorer_hidden_dim: 64
   question_answerer_hidden_dim: 64
+  freeze_encoding: False
