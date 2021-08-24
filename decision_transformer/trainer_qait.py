@@ -50,7 +50,7 @@ class JsonDataset(Dataset):
         with open(offline_rl_data_filename) as offline_rl_data,open(word_encodings_filename) as word_encodings_data:
             
 
-            word_encodings = defaultdict(lambda: 1,json.load(word_encodings_data))
+            word_encodings = json.load(word_encodings_data)
             commands = ["action","modifier","object"]
 
             EOS_tag = "[SEP]"#word_encodings["</s>"]
@@ -71,15 +71,15 @@ class JsonDataset(Dataset):
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
                 
                 trajectory["mask"] = episode["mask"]
-                trajectory["answer"] = self.tz(episode["answer"],padding='max_length', truncation=True, max_length = 1)
-                print(trajectory["answer"])
+                trajectory["answer"] = word_encodings[episode["answer"]]
+
 
                 for game_step in episode["steps"]:
                     
                     game_step["state"].replace("<s>","[CLS]").replace("</s>","[SEP]").replace("<|>","[SEP]")
 
-                    # Get the action, modifier, object triple 
-                    act, mod, obj = [game_step["command"][command].replace("</s>","[PAD]").replace("<pad>","[PAD]") for command in commands]
+                    # Get the action, modifier, object triple
+                    act, mod, obj = game_step["command"].split()
 
                     if mod == PAD_tag and obj != PAD_tag:
                         mod,obj = obj, mod
@@ -94,7 +94,7 @@ class JsonDataset(Dataset):
                     # trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
                     #  "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
                     tokenized_state = self.tz(game_step["state"],padding='max_length', truncation=True, max_length = self.sentence_length)
-                    tokenized_action = self.tz(" ".join([act,mod,obj]), add_special_tokens=False,padding='max_length',truncation=True, max_length = 3)
+                    tokenized_action = self.tz(f"{act} {mod} {obj}", add_special_tokens=False,padding='max_length',truncation=True, max_length = 10)
                     trajectory.add({"rewards" : reward, "observations" :  tokenized_state["input_ids"],
                      "timesteps" : timestep, "actions" : tokenized_action["input_ids"],
                      #"token_type_ids" : tokenized_state["token_type_ids"],
@@ -305,32 +305,27 @@ class SequenceTrainer(Trainer):
 
         vocab_size = self.model.vocab_size
 
-        if self.model.answer_question:
-            answer_preds = self.model.forward(
-            states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
-            
-            answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-            answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
+        answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-            loss = self.loss_fn(answer_preds[:,-1],answer_targets[:,-1])
-        else:
-            command_target = torch.clone(actions)
-            action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
+        command_target = torch.clone(actions)
+        action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
 
-            action_preds,modifier_preds,object_preds = self.model.forward(
-            states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
+        action_preds, modifier_preds, object_preds, answer_preds = self.model.forward(
+        states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
 
-            action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-            action_target = action_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+        action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        action_target = action_target.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-            modifier_preds = modifier_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-            modifier_target = modifier_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+        modifier_preds = modifier_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        modifier_target = modifier_target.reshape(-1)[attention_mask.reshape(-1) > 0]
 
-            object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
-            object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
-            
-            loss = self.loss_fn(action_preds,action_target) + self.loss_fn(modifier_preds,modifier_target) + self.loss_fn(object_preds,object_target)
-
+        object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
+        
+        loss = self.loss_fn(
+            action_preds, modifier_preds, object_preds, answer_preds[:,-1],
+            state_target, modifier_target, object_target, answer_targets[:,-1]
+        )
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
