@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from transformers import BertTokenizerFast, BertModel
 from transformers import GPT2Config
-from trajectory_gpt2 import GPT2Model
+from decision_transformer.trajectory_gpt2 import GPT2Model
 
 from collections import defaultdict
 
@@ -232,7 +232,7 @@ class QuestionAnsweringBert(nn.Module):
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         self.hidden_size = hidden_size
 
-        self.context_window = 512
+        self.context_window = 200
         self.vocab_size = vocab_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         

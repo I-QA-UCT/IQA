@@ -1,3 +1,4 @@
+from ftfy import fix_text
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -176,7 +177,7 @@ class Trainer:
         return loss.detach().cpu().item()
 
 class QuestionAnsweringDataLoader(Dataset):
-
+    
     def __init__(self,data , tokenizer=None, context_window=180):
         offline_rl_data_filename = RELATIVE_PATH + data
         word_encodings_filename = WORD_ENCODINGS
@@ -189,25 +190,14 @@ class QuestionAnsweringDataLoader(Dataset):
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
-                episode = json.loads(sample_entry)
-
-                prompt = deque()
+                episode = json.loads(fix_text(sample_entry))
+                    
+                game_step = episode["steps"][-2]
+                cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","[SEP]").replace("<pad>","").split() # <|> -> [SEP]/ ""
                 
-                token_count = 0
-
-                for i in range(len(episode["steps"])-1,-1,-1):
-                    
-                    game_step = episode["steps"][i]
-                    cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","")
-                    
-                    if token_count < context_window - len(episode["question"].split()) - 10:
-                        prompt.appendleft(" ".join(cleaned_state))
-                        token_count += len(cleaned_state)
-                    else:
-                        text_prompt = "[CLS] "+ " ".join(list(prompt)) + " [SEP] " +  episode["question"] 
+                text_prompt = "[CLS] "+ " ".join(cleaned_state) + " [SEP] " +  episode["question"] + "[SEP]"
                 
                 self.dataset.append((text_prompt, word_encodings[episode["answer"]]))
-
 
     def __len__(self):
         return len(self.dataset)
@@ -230,11 +220,16 @@ class QuestionAnsweringTrainer(Trainer):
     def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
-        self.dataset = QuestionAnsweringDataLoader(data,model.tokenizer,model.context_window)
-        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=True, num_workers=num_workers)
-        self.choice2id = self.dataset
-
-    
+        dataset = QuestionAnsweringDataLoader(data, model.tokenizer,model.context_window)
+        train_size = round(len(dataset)*0.8)
+        eval_size = len(dataset) - train_size
+        self.train_subset, self.val_subset = torch.utils.data.random_split(
+                dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(42))
+        
+        self.dataloader = DataLoader(dataset=self.train_subset, shuffle=True, batch_size=batch_size)
+        self.val_loader = DataLoader(dataset=self.val_subset, shuffle=False, batch_size=batch_size)
+        
+        
     def train_step(self):
         total_losses = []
         hits = 0
@@ -250,10 +245,10 @@ class QuestionAnsweringTrainer(Trainer):
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
 
-            total_losses.append(loss.detach()) 
+            total_losses.append(loss.detach().cpu().item()) 
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 
-        return total_losses, hits.cpu().item()/len(self.dataset)
+        return total_losses, hits.cpu().item()/len(self.train_subset)
 
 
     def train_iteration(self, num_steps=0, iter_num=0, print_logs=False):
@@ -273,11 +268,16 @@ class QuestionAnsweringTrainer(Trainer):
 
         eval_start = time.time()
 
-        # self.model.eval()
-        # for eval_fn in self.eval_fns:
-        #     outputs = eval_fn(self.model)
-        #     for k, v in outputs.items():
-        #         logs[f'evaluation/{k}'] = v
+        self.model.eval()
+        hits = 0
+        for batch in self.val_loader:
+
+            prompt_question, answers = batch
+            output = self.model.forward([pq for pq in prompt_question])
+            answers_tensor = torch.tensor(answers,device=self.model.device)
+            hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
+
+        logs["evaluation/QA_accuracy"] = hits.cpu().item()/len(self.val_subset)
 
         logs['time/total'] = time.time() - self.start_time
         logs['time/evaluation'] = time.time() - eval_start
@@ -295,6 +295,7 @@ class QuestionAnsweringTrainer(Trainer):
                 print(f'{k}: {v}')
 
         return logs
+
 
 
 class SequenceTrainer(Trainer):
