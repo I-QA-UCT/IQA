@@ -210,6 +210,7 @@ def experiment(
             n_positions=1024,
             resid_pdrop=variant['dropout'],
             attn_pdrop=variant['dropout'],
+            bert_embeddings= True if variant['embed_type'] == "bert" else False,
         )
     else:
         raise NotImplementedError
@@ -285,6 +286,7 @@ if __name__ == '__main__':
     parser.add_argument('--sentence_tensor_length', '-sent', type=int, default=170)
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
     parser.add_argument('--answer_question', '-qa', type=bool, default=False)
+    parser.add_argument('--embed_type', type=str, default="normal")
 
     args = parser.parse_args()
 
