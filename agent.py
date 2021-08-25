@@ -794,7 +794,7 @@ class Agent:
         # sum up all the values of policy_losses and value_losses
         actor_critic_loss = policy_losses + value_losses - self.entropy_coeff*entropy_loss
         if self.icm:
-            loss = self.online_net.curiosity_module.lambda_weight*actor_critic_loss+icm_loss
+            loss = self.online_net.curiosity_module.lambda_weight*actor_critic_loss+self.online_net.curiosity_module.loss_weight*icm_loss
         else:
             loss = actor_critic_loss
         
@@ -906,7 +906,7 @@ class Agent:
             dqn_loss = F.smooth_l1_loss(q_value, rewards)
 
             if self.icm:
-                loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+icm_loss
+                loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+self.online_net.curiosity_module.loss_weight*icm_loss
             else:
                 loss = dqn_loss
             return loss
@@ -939,7 +939,7 @@ class Agent:
         dqn_loss = -torch.sum(m * log_q_value, 1)
         dqn_loss = torch.mean(dqn_loss)
         if self.icm:
-            loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+icm_loss
+            loss = self.online_net.curiosity_module.lambda_weight*dqn_loss+self.online_net.curiosity_module.loss_weight*icm_loss
         else:
             loss = dqn_loss
         return loss

@@ -22,8 +22,8 @@ def read_file(filename):
     episode_counter = 0
     with jsonlines.open(filename) as reader:
         for obj in reader:
-            if episode_counter>200:
-                break
+            # if episode_counter>200:
+            #     break
             obj["Episode"] = episode_counter
             episode_counter+=1
             dataframe.append(obj)
@@ -32,21 +32,22 @@ def read_file(filename):
         
 if __name__ == "__main__":
 
-    FILENAME_1 = "../experiments/a2c_existence_500_random.json"
-    LINE_1 = "a2c without inverse semantics"
-    FILENAME_2 = "../experiments/a2c_existence_500_random_inverse_semantics.json"
-    LINE_2 = "a2c with inverse semantics"
-
+    FILENAMES = ["../experiments/a2c_existence_500_random.json","../experiments/a2c_existence_500_random_inverse_semantics.json"]
+    LINES = ["no semantics","semantics"]
+    
     SMOOTH = True
-    SMOOTHING_DEGREE = 1
-
-    df1 = read_file(FILENAME_1)
-    df2 = read_file(FILENAME_2)
-
+    SMOOTHING_DEGREE = 0
+    
+    dataframes = []
+    for filename in FILENAMES:
+        dataframes.append(read_file(filename))
+    
     fig = px.line(title="Training Accuracy")
     fig.update_xaxes(title_text='Episodes')
     fig.update_yaxes(title_text='Accuracy')
-    fig.add_scatter(x=df1["Episode"],y=smoothTriangle(df1["qa"],SMOOTHING_DEGREE) if SMOOTH else df1["qa"],mode="lines",name=LINE_1)
-    fig.add_scatter(x=df2["Episode"],y=smoothTriangle(df2["qa"],SMOOTHING_DEGREE) if SMOOTH else df2["qa"],mode="lines",name=LINE_2)
+    
+    for i,dataframe in enumerate(dataframes):
+        fig.add_scatter(x=dataframe["Episode"],y=smoothTriangle(dataframe["qa"],SMOOTHING_DEGREE) if SMOOTH else dataframe["qa"],mode="lines",name=LINES[i])
+   
     fig.show()
     

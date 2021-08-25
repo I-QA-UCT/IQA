@@ -1,3 +1,4 @@
+from collections import defaultdict
 import numpy as np
 from textworld.generator import data
 import generic
@@ -12,6 +13,8 @@ import textworld
 from agent import Agent
 from textworld.gym import register_games, make_batch
 from query import process_facts
+from sklearn.metrics import f1_score,classification_report,confusion_matrix
+
 
 request_infos = textworld.EnvInfos(description=True,
                                    inventory=True,
@@ -28,17 +31,38 @@ request_infos = textworld.EnvInfos(description=True,
                                    admissible_commands=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
+def get_answer_dist(data_path="./",random_map=True,question_type='existence'):
+   
+    eval_data_path = pjoin(data_path, "test_set/data.json")
 
-def evaluate(data_path, agent):
+    with open(eval_data_path) as f:
+        data = json.load(f)
+    data = data[question_type]
+    data = data["random_map"] if random_map else data["fixed_map"]
+
+    answer_dist = defaultdict(int)
+
+    for i in data:
+        answer = (data[i][0]["answer"])
+        answer_dist[answer]+=1
+
+    print(answer_dist)
+
+
+def evaluate(data_path, agent,print_game=False,print_f1_score=True):
     """
     Evaluate an agent on a test set
     """
     eval_data_path = pjoin(data_path, agent.eval_data_path)
-
+    
     with open(eval_data_path) as f:
         data = json.load(f)
     data = data[agent.question_type]
     data = data["random_map"] if agent.random_map else data["fixed_map"]
+
+    if print_f1_score:
+        pred = []
+        truth = []
 
     print_qa_reward, print_sufficient_info_reward = [], []
     for game_path in tqdm(data):
@@ -81,7 +105,9 @@ def evaluate(data_path, agent):
             input_quest, input_quest_char, _ = agent.get_agent_inputs(questions)
 
             transition_cache = []
-
+            if print_game:
+                print("Question: ",questions)
+                print("============================================================================")
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
                 for i in range(batch_size):
@@ -95,6 +121,9 @@ def evaluate(data_path, agent):
                             init_facts[i] = copy.copy(new_facts)
 
                 observation_strings_w_history = agent.naozi.get()
+                if print_game:
+                    print(commands)
+                    print(observation_strings_w_history)
                 input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
                 commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
                 for i in range(batch_size):
@@ -118,6 +147,10 @@ def evaluate(data_path, agent):
             chosen_word_indices = agent.answer_question_act_greedy(answerer_input_observation, answerer_input_observation_char, answerer_observation_ids, input_quest, input_quest_char)  # batch
             chosen_word_indices_np = generic.to_np(chosen_word_indices)
             chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
+            
+            if print_f1_score:
+                pred.append(chosen_answers[0])
+                truth.append(answers[0])
 
             # rewards
             # qa reward
@@ -161,11 +194,17 @@ def evaluate(data_path, agent):
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
         env.close()
-
+    
     print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+    if print_f1_score and not agent.question_type == "location":
+        print("===== F1 Score =====: {:2.3f} ".format(f1_score(truth,pred,pos_label='1')))
+        print("===== Confusion Matrix =====:")
+        print(confusion_matrix(truth,pred))
+        print(classification_report(truth,pred,labels=["0","1"]))
     return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)
 
 if (__name__ == "__main__"):
+
     agent = Agent()
 
     output_dir, data_dir = ".", "."

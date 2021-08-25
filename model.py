@@ -643,7 +643,8 @@ class ICM(torch.nn.Module):
         """
         Read config file to set ICM hyperparameters
         """
-        self.scaling_factor = self.config['icm']['scaling_factor']
+        self.scaling_factor = self.config['icm']['reward_scaling_factor']
+        self.loss_weight = self.config['icm']['icm_loss_weight']
         self.beta = self.config['icm']['beta']
         self.lambda_weight = self.config['icm']['lambda']
         self.hidden_size = self.config['icm']['hidden_size']

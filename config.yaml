@@ -1,8 +1,8 @@
 # General Settings
 general:
-  train_data_size: 1                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 100                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
-  random_map: False                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
+  random_map: True                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
   question_type: "location"           # location, existence, attribute
   random_seed: 42                     # the secret of deep learning.
   naozi_capacity: 1                   # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
@@ -11,7 +11,7 @@ general:
 # Training Settings
 training:
   batch_size: 1                       # Number of games played in parallel
-  max_episode: 10000                 # Number of episodes to train
+  max_episode: 200000                 # Number of episodes to train
   learn_start_from_this_episode: 0    # Episodes of games played randomly to generate experience - only important for Value based methods
   target_net_update_frequency: 1000   # sync target net with online net per this many epochs - only important for Value based methods
   max_nb_steps_per_episode: 50        # after this many steps, a game is terminated
@@ -31,7 +31,7 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_location_1_inverse_w_reward'
+  experiment_tag: 'a2c_location_100_random'
   load_pretrained: False               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
@@ -65,19 +65,21 @@ a2c:
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
-  scaling_factor: 0.01
+  enable: False
   beta: 0           
   lambda: 1
+  icm_loss_weight : 0.5
   hidden_size: 128
   state_feature_size: 128
-  inverse_reward: True
-  use_intrinsic_reward: True
   use_feature_net : False
   inverse_action_weight: 1
-  inverse_modifier_weight: 0
-  inverse_object_weight: 0
-
+  inverse_modifier_weight: 0.1
+  inverse_object_weight: 0.1
+  use_intrinsic_reward: False
+  reward_scaling_factor: 0.005
+  inverse_reward: True
+ 
+  
 epsilon_greedy:
   noisy_net: False  # if this is true, then epsilon greedy is disabled
   epsilon_anneal_episodes: 100000  # -1 if not annealing
