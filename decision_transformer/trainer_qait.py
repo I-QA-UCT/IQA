@@ -24,9 +24,9 @@ class JsonDataset(Dataset):
 
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
 
-    def pad_input(self,sentence, seq_len):
+    def pad_input(self,sentence):
 
-        diff = len(sentence) - seq_len
+        diff = len(sentence) - self.sentence_length
 
         if diff > 0:
             del sentence[-(diff+1):-1]
@@ -53,14 +53,13 @@ class JsonDataset(Dataset):
             word_encodings = json.load(word_encodings_data)
             commands = ["action","modifier","object"]
 
-            EOS_tag = "[SEP]"#word_encodings["</s>"]
-            PAD_tag = "[PAD]"#word_encodings["<pad>"]
+            PAD_tag = "[PAD]"
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
                 
                 episode = json.loads(sample_entry)
 
-                reward = episode["total_reward"]
+                # reward = episode["total_reward"]
                 
                 trajectory = Trajectory()
                 
@@ -71,39 +70,41 @@ class JsonDataset(Dataset):
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
                 
                 trajectory["mask"] = episode["mask"]
-                trajectory["answer"] = word_encodings[episode["answer"]]
-
 
                 for game_step in episode["steps"]:
                     
-                    game_step["state"].replace("<s>","[CLS]").replace("</s>","[SEP]").replace("<|>","[SEP]")
+                    game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
 
                     # Get the action, modifier, object triple
-                    act, mod, obj = game_step["command"].split()
-
+                    command = game_step["command"]
+                    act, mod, obj = command["action"], command["modifier"], command["object"]
+                    
                     if mod == PAD_tag and obj != PAD_tag:
                         mod,obj = obj, mod
 
+                    if mod == PAD_tag:
+                        mod = "<pad>"
+                    
+                    if obj == PAD_tag:
+                        obj = "<pad>"
                     # Timestep
                     timestep = game_step['step']
 
                     # Get reward and add it to the negative total
                     # Thus, when all steps complete reward should = 0
-                    reward -= game_step["reward"]
-
+                    reward = game_step["reward"]
                     # trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
                     #  "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
-                    tokenized_state = self.tz(game_step["state"],padding='max_length', truncation=True, max_length = self.sentence_length)
-                    tokenized_action = self.tz(f"{act} {mod} {obj}", add_special_tokens=False,padding='max_length',truncation=True, max_length = 10)
-                    trajectory.add({"rewards" : reward, "observations" :  tokenized_state["input_ids"],
-                     "timesteps" : timestep, "actions" : tokenized_action["input_ids"],
+                    # tokenized_state = self.tz( "[CLS] " +game_step["state"] + " [SEP] " + episode["question"] + " [SEP]",padding='max_length',add_special_tokens=False, truncation=True, max_length = self.sentence_length)
+                    # tokenized_action = self.tz(f"{act} {mod} {obj}", add_special_tokens=False,padding='max_length',truncation=True, max_length = 10)
+                    trajectory.add({"rewards" : reward, "observations" :  self.pad_input([word_encodings[token] for token in game_step["state"].split()] + [word_encodings["<|>"]]+ [word_encodings[token] for token in episode["question"].split()]) ,
+                     "timesteps" : timestep, "actions" : [word_encodings[act],word_encodings[mod],word_encodings[obj]],"answer" : word_encodings[episode["answer"]],
                      #"token_type_ids" : tokenized_state["token_type_ids"],
                      })
 
                 trajectories.append(trajectory)
 
         return trajectories
-
 class Trainer:
 
     def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler=None, eval_fns=None):
@@ -305,13 +306,14 @@ class SequenceTrainer(Trainer):
 
         vocab_size = self.model.vocab_size
 
-        answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
-
         command_target = torch.clone(actions)
         action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
 
         action_preds, modifier_preds, object_preds, answer_preds = self.model.forward(
         states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
+        
+        answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
 
         action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
         action_target = action_target.reshape(-1)[attention_mask.reshape(-1) > 0]
@@ -321,11 +323,9 @@ class SequenceTrainer(Trainer):
 
         object_preds = object_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
         object_target = object_target.reshape(-1)[attention_mask.reshape(-1) > 0]
-        
-        loss = self.loss_fn(
-            action_preds, modifier_preds, object_preds, answer_preds[:,-1],
-            state_target, modifier_target, object_target, answer_targets[:,-1]
-        )
+
+        loss = self.loss_fn(action_preds, action_target) + self.loss_fn(modifier_preds, modifier_target) + self.loss_fn(object_preds, object_target) + self.loss_fn(answer_preds, answer_targets)
+
         self.optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
@@ -335,7 +335,6 @@ class SequenceTrainer(Trainer):
             self.diagnostics['training/action_error'] = loss.detach().cpu().item()
 
         return loss.detach().cpu().item()
-
 if __name__ == "__main__":
     import argparse
 
