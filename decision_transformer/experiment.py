@@ -254,7 +254,7 @@ def experiment(
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True)
         
         if logs['training/train_loss_mean'] < min_loss:
-            min_loss = logs['training/train_loss_mean']
+            min_loss = outputs['training/train_loss_mean']
             torch.save(model,f"{args['model_out']}/{args['env']}.pt")
         
         if log_to_wandb:
