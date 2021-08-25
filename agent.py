@@ -236,7 +236,7 @@ class Agent:
             else:
                 checkpoint = torch.load(load_from, map_location='cpu')
             self.online_net.load_state_dict(checkpoint['online_net'])
-            # self.GAT.load_state_dict(checkpoint['gat'])
+            self.GAT.load_state_dict(checkpoint['gat'])
         except:
             print("Failed to load checkpoint...")
 
@@ -545,7 +545,7 @@ class Agent:
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
 
-            self.state.step(self.get_state_strings(infos)[0], commands[0])
+            self.state.step(self.get_state_strings(infos)[0], commands[0] )
             gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
 
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab

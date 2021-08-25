@@ -29,8 +29,8 @@ checkpoint:
   save_checkpoint: True
   save_frequency: 1000  # episode
   experiment_tag: 'DQN_Fixed_1_pretrained_embeddings_gat'
-  load_pretrained: False  # during test, enable this so that the agent load your pretrained model
-  load_from_tag: 'DQN_Fixed_1_pretrained_embeddings_gat'  # if you want to load from prev experiment
+  load_pretrained: True  # during test, enable this so that the agent load your pretrained model
+  load_from_tag: 'trained_models/DQN_Fixed_1_pretrained_embeddings_gat_model'  # if you want to load from prev experiment
 
 replay:
   discount_gamma: 0.9

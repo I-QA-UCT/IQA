@@ -92,7 +92,7 @@ class SupplementaryKG(object):
         if len(visible_state) > 1:
             visible_state = visible_state[2]
         self.visible_state = str(visible_state)
-        
+
         rules = []
         #Run visible state through Standford OpenIE and extract triple into list of rules
         sents = openIE(self.visible_state)['sentences']
@@ -112,7 +112,6 @@ class SupplementaryKG(object):
 
                 rules.append((subject, relation, object))
 
-        # print(rules)
         prev_remove = []
         room = ""
         room_set = False 
@@ -184,11 +183,12 @@ class SupplementaryKG(object):
             relation = self.graph_state[edge[0]][edge[1]]['rel']
             if relation in prev_remove:
                 self.graph_state.remove_edge(*edge) 
-        
+
+
         #Remove previous "you" edges from KG
         if prev_you_subgraph is not None:
             self.graph_state.remove_edges_from(prev_you_subgraph.edges)
-        
+    
         #Update KG to include new edges and nodes
         if self.use_bert:
            for rule in add_rules:
@@ -212,10 +212,9 @@ class SupplementaryKG(object):
                     if u != 'it' and v != 'it':
                         self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
 
-        # print("pre", self.graph_state.edges)
-
         if prev_room_subgraph is not None:
-            self.graph_state.add_edges_from(prev_room_subgraph.edges)
+            for edge in list(prev_room_subgraph.edges):
+                self.graph_state.add_edge(edge[0], edge[1], rel=prev_room_subgraph[edge[0]][edge[1]]['rel'])
 
         return
     
@@ -287,13 +286,13 @@ class SupplementaryKG(object):
 
         return list(set(result))
 
-    def step(self, visible_state, prev_action=None):
+    def step(self, visible_state,prev_action=None):
+        
         self.update_state(visible_state, prev_action)
         if self.use_bert:
             self.graph_state_rep = self.get_state_representation_bert()
         else:
             self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix, device =self.device)
-
 
 if __name__ == '__main__':
 

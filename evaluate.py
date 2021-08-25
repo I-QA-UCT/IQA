@@ -78,6 +78,7 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
         if agent.question_type == "attribute":
             data_attributes = [item["attribute"] for item in data[game_path]]
 
+
         for q_no in range(len(data_questions)):
             questions = data_questions[q_no: q_no + 1]
             answers = data_answers[q_no: q_no + 1]
@@ -87,6 +88,7 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
                 reward_helper_info["_attributes"] = data_attributes[q_no: q_no + 1]
 
             obs, infos = env.reset()
+            agent.state.reset_state()
             batch_size = len(obs)
             agent.eval()
             agent.init(obs, infos)
@@ -125,7 +127,7 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
                     print(commands)
                     print(observation_strings_w_history)
                 input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
-                commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
+                commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, commands, random=False)
                 for i in range(batch_size):
                     commands_per_step[i].append(commands[i])
 
@@ -212,12 +214,12 @@ if (__name__ == "__main__"):
     if agent.load_pretrained:
         if os.path.exists(output_dir + "/" + agent.experiment_tag + "_model.pt"):
             agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
-            if not agent.a2c:
-                agent.update_target_net()
+            # if not agent.a2c:
+            agent.update_target_net()
         elif os.path.exists(data_dir + "/" + agent.load_from_tag + ".pt"):
             agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
-            if not agent.a2c:
-                agent.update_target_net()
+            # if not agent.a2c:
+            agent.update_target_net()
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
     
