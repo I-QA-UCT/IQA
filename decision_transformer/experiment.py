@@ -249,16 +249,23 @@ def experiment(
         )
         # wandb.watch(model)  # wandb has some bug
     print("========== Beginning Training ==========\n")
+    min_loss = float("inf")
     for iter in range(variant['max_iters']):
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True)
+        
+        if logs['training/train_loss_mean'] < min_loss:
+            min_loss = logs['training/train_loss_mean']
+            torch.save(model,f"{args['model_out']}/{args['env']}.pt")
+        
         if log_to_wandb:
             wandb.log(outputs)
 
-    qa = "_qa" if variant["answer_question"] else ""
-    print()
-    torch.save(model.state_dict(), f"./decision_transformer/saved_models/{variant['env']}{qa}.pt")
-    with open(f"./decision_transformer/saved_models/{variant['env']}{qa}_config.pkl", "wb") as config:
-        pickle.dump(variant, config)
+
+    # qa = "_qa" if variant["answer_question"] else ""
+    # print()
+    # torch.save(model.state_dict(), f"./decision_transformer/saved_models/{variant['env']}{qa}.pt")
+    # with open(f"./decision_transformer/saved_models/{variant['env']}{qa}_config.pkl", "wb") as config:
+    #     pickle.dump(variant, config)
 
 
 if __name__ == '__main__':
@@ -287,6 +294,7 @@ if __name__ == '__main__':
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
     parser.add_argument('--answer_question', '-qa', type=bool, default=False)
     parser.add_argument('--embed_type', type=str, default="normal")
+    parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
 
     args = parser.parse_args()
 

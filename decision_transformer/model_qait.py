@@ -4,7 +4,7 @@ import torch.nn as nn
 
 from transformers import BertTokenizerFast, BertModel
 from transformers import GPT2Config
-from decision_transformer.trajectory_gpt2 import GPT2Model
+from trajectory_gpt2 import GPT2Model
 
 from collections import defaultdict
 
