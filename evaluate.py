@@ -2,8 +2,11 @@ import argparse
 import torch
 import pickle
 
-from decision_transformer import model_qait
-from decision_transformer import trajectory_gpt2
+import sys
+sys.path.insert(0, './decision_transformer')
+
+from model_qait import DecisionTransformer
+from trainer_qait import process_input
 
 import numpy as np
 from textworld.generator import data
@@ -44,26 +47,27 @@ def evaluate(data_path, agent,variant):
 
     decision_transformer = variant["decision_transformer"]
 
-    config = pickle.load(open(f"./{variant['model_dir']}/{variant['model']}_config.pkl", "rb"))
-
-    print(config)
-    model = model_qait.DecisionTransformer(
-            state_dim=config["sentence_tensor_length"],
+    if decision_transformer:
+        # Loading in decision transformer for action prediction.
+        
+        with open("decision_transformer/data/word_encodings.json") as word_encodings_data:
+            word_encodings = json.load(word_encodings_data)
+        model = DecisionTransformer(
+            state_dim=180,
             act_dim = 3,
-            max_length=config["K"],
+            max_length=50,
             max_ep_len=50,
-            hidden_size=config['embed_dim'],
-            n_layer=config['n_layer'],
-            n_head=config['n_head'],
-            n_inner=4*config['embed_dim'],
-            activation_function=config['activation_function'],
+            hidden_size=256,
+            n_layer=2,
+            n_head=8,
+            n_inner=4*256,
+            activation_function='tanh',
             n_positions=1024,
-            resid_pdrop=config['dropout'],
-            attn_pdrop=config['dropout'],
+            resid_pdrop=0.1,
+            attn_pdrop=0.1,
         )
-
-    model.load_state_dict(torch.load(f"{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu')))
-    model.eval()
+        model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
+        model.eval()
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -86,7 +90,6 @@ def evaluate(data_path, agent,variant):
 
         for q_no in range(len(data_questions)):
             questions = data_questions[q_no: q_no + 1]
-
             answers = data_answers[q_no: q_no + 1]
             reward_helper_info = {"_entities": data_entities[q_no: q_no + 1],
                                   "_answers": data_answers[q_no: q_no + 1]}
@@ -115,6 +118,8 @@ def evaluate(data_path, agent,variant):
 
             state_strings = agent.get_state_strings(infos)
             counting_rewards = [agent.get_binarized_count(state_strings, update=True)] # batch x reward x timestep
+            padded_state_history = []
+            padded_command_history = []
 
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
@@ -133,7 +138,17 @@ def evaluate(data_path, agent,variant):
 
                 # Batch size of 1 for now
                 if decision_transformer:
-                    commands, replay_info, answer = agent.act_decision_transformer(commands_per_step,[step_no]*batch_size,obs, observation_strings_w_history,questions,counting_rewards,model=model)
+
+                    processed_state, processed_command = process_input(state=observation_strings_w_history[-1], question=questions[q_no],command=commands_per_step[0][-1], sequence_length=model.state_dim, word2id=word_encodings)
+                    padded_state_history.append(processed_state)
+                    padded_command_history.append(processed_command)
+                    # print(f"Step no: {step_no} | State: {observation_strings_w_history[-1]} | Prev command: {commands_per_step[i][-1]} | Question: {questions[q_no]} ")
+
+                    commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model)
+                    # print(f"Model: Action : {commands} | Answer {answer} | Question: {questions[q_no]}")
+                    if "wait" in commands:
+                        step_no = agent.eval_max_nb_steps_per_episode - 1
+
                 else:
                     commands, replay_info = agent.act(obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False)
 
@@ -150,7 +165,9 @@ def evaluate(data_path, agent,variant):
                 
                 state_strings = agent.get_state_strings(infos)
                 counting_rewards.append(agent.get_binarized_count(state_strings, update=True))
-                
+
+                counting_rewards[-1][0] = counting_rewards[-2][0] - counting_rewards[-1][0]
+
                 if (step_no == agent.eval_max_nb_steps_per_episode - 1 ) or (step_no > 0 and np.sum(generic.to_np(replay_info[-1])) == 0):
                     break
 
@@ -158,15 +175,17 @@ def evaluate(data_path, agent,variant):
             answerer_input = agent.naozi.get()
             answerer_input_observation, answerer_input_observation_char, answerer_observation_ids =  agent.get_agent_inputs(answerer_input)
 
-            if decision_transformer:
-                chosen_answers = [agent.word_vocab[answer.cpu().item()]]
-            else:
+            if not decision_transformer:
                 chosen_word_indices = agent.answer_question_act_greedy(answerer_input_observation, answerer_input_observation_char, answerer_observation_ids, input_quest, input_quest_char)  # batch
+            
                 chosen_word_indices_np = generic.to_np(chosen_word_indices)
                 chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
+            else:
+                chosen_answers = answer #agent.qa_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model_qa)
 
             # rewards
             # qa reward
+            # print(answers, chosen_answers)
             qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
             # sufficient info rewards
             masks = [item[-1] for item in transition_cache]

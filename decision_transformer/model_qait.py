@@ -6,6 +6,7 @@ from transformers import BertTokenizerFast, BertModel
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
+
 from collections import defaultdict
 
 class DecisionTransformer(nn.Module):
@@ -186,41 +187,47 @@ class DecisionTransformer(nn.Module):
 
     def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
 
-        states = torch.Tensor(states).reshape(1, -1, self.state_dim)
-        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim)
+        states = torch.Tensor(states).reshape(1, -1, self.state_dim).long()
+        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim).long()
         returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1)
-        timesteps = torch.Tensor(timesteps).reshape(1, -1)
+        timesteps = torch.Tensor(timesteps).reshape(1, -1).long()
+        # print(states.size())
+        # if self.max_length is not None:
+        #     states = states[:,-self.max_length:]
+        #     actions = actions[:,-self.max_length:]
+        #     returns_to_go = returns_to_go[:,-self.max_length:]
+        #     timesteps = timesteps[:,-self.max_length:]
 
-        if self.max_length is not None:
-            states = states[:,-self.max_length:]
-            actions = actions[:,-self.max_length:]
-            returns_to_go = returns_to_go[:,-self.max_length:]
-            timesteps = timesteps[:,-self.max_length:]
-
-            # pad all tokens to sequence length
-            attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
-            attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
-            states = torch.cat(
-                [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
-                dim=1).to(dtype=torch.long)
-            actions = torch.cat(
-                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
-                             device=actions.device), actions],
-                dim=1).to(dtype=torch.long)
-            returns_to_go = torch.cat(
-                [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
-                dim=1).to(dtype=torch.float32)
-            timesteps = torch.cat(
-                [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
-                dim=1
-            ).to(dtype=torch.long)
-        else:
-            attention_mask = None
+        #     # pad all tokens to sequence length
+        #     attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
+        #     attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
+        #     states = torch.cat(
+        #         [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
+        #         dim=1).to(dtype=torch.long)
+        #     actions = torch.cat(
+        #         [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
+        #                      device=actions.device), actions],
+        #         dim=1).to(dtype=torch.long)
+        #     returns_to_go = torch.cat(
+        #         [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
+        #         dim=1).to(dtype=torch.float32)
+        #     timesteps = torch.cat(
+        #         [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
+        #         dim=1
+        #     ).to(dtype=torch.long)
+        # else:
+        #     attention_mask = None
             
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
-            states, actions, None, returns_to_go, timesteps, attention_mask=attention_mask, **kwargs)
+            states, actions, None, returns_to_go, timesteps, attention_mask=None, **kwargs)
+        
+        softmax = nn.Softmax(dim=0)
+        action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[0,-1]))
+        modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[0,-1]))
+        object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[0,-1]))
+        answer_dist = torch.distributions.categorical.Categorical(softmax(answer_pred[0,-1]))
 
-        return torch.argmax(action_preds[0,-1]), torch.argmax(modifier_preds[0,-1]), torch.argmax(object_preds[0,-1]), torch.argmax(answer_pred[0,-1])
+        return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), answer_dist.sample()
 
 class QuestionAnsweringBert(nn.Module):
     def __init__(self,vocab_size,hidden_size=64):

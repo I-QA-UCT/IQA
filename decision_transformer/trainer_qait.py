@@ -1,4 +1,4 @@
-from ftfy import fix_text
+# from ftfy import fix_text
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -15,25 +15,49 @@ RELATIVE_PATH = "decision_transformer/data/"
 
 WORD_ENCODINGS = RELATIVE_PATH + "word_encodings.json"
 
+def process_input(state, question, command, sequence_length, word2id):
+
+    def command_to_id(command):
+        act, mod, obj = "", "<pad>" , "<pad>" 
+            
+        command = command.split()
+
+        if len(command) == 3:
+            act, mod, obj = command
+        elif len(command) == 2:
+            act, obj, mod = command, "</s>"            
+        elif len(command) == 1:
+            act = command[0]
+    
+        return [word2id[act],word2id[mod],word2id[obj]]
+
+    def state_question_to_id(state, question, seq_len):
+        
+        state = state + " <|> " +question
+
+        # If word doesn't exist - return <unk>
+        state_question_ids = [word2id.get(word,1) for word in state.split()]
+
+        diff = len(state_question_ids) - seq_len
+
+        if diff > 0:
+            del state_question_ids[-(diff+1):-1]
+        elif diff < 0:
+            state_question_ids.extend(abs(diff)*[0])
+
+        return state_question_ids
+
+    return state_question_to_id(state,question,sequence_length),command_to_id(command)
+
 class JsonDataset(Dataset):
 
-    def __init__(self,offline_rl_data_filename,sentence_length=200,max_episodes=50):      
+    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50):      
         self.sentence_length = sentence_length
         self.max_episodes = max_episodes
         self.tz = BertTokenizer.from_pretrained('bert-base-uncased')#,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
 
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
 
-    def pad_input(self,sentence):
-
-        diff = len(sentence) - self.sentence_length
-
-        if diff > 0:
-            del sentence[-(diff+1):-1]
-        elif diff < 0:
-            sentence.extend(abs(diff)*[0])
-
-        return sentence 
 
     def __getitem__(self,index):
         return self.trajectories[index]
@@ -45,9 +69,9 @@ class JsonDataset(Dataset):
         for trajectory in self.trajectories:
             yield trajectory
 
-    def load(self,offline_rl_data_filename,word_encodings_filename):
+    def load(self, offline_rl_data_filename, word_encodings_filename):
         trajectories = []
-        with open(offline_rl_data_filename) as offline_rl_data,open(word_encodings_filename) as word_encodings_data:
+        with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
 
             word_encodings = json.load(word_encodings_data)
@@ -73,14 +97,14 @@ class JsonDataset(Dataset):
 
                 for game_step in episode["steps"]:
                     
-                    game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
+                    # game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
 
                     # Get the action, modifier, object triple
                     command = game_step["command"]
                     act, mod, obj = command["action"], command["modifier"], command["object"]
                     
                     if mod == PAD_tag and obj != PAD_tag:
-                        mod,obj = obj, mod
+                        mod, obj = obj, mod
 
                     if mod == PAD_tag:
                         mod = "<pad>"
@@ -93,18 +117,14 @@ class JsonDataset(Dataset):
                     # Get reward and add it to the negative total
                     # Thus, when all steps complete reward should = 0
                     reward = game_step["reward"]
-                    # trajectory.add({"rewards" : reward, "observations" : self.pad_input([word_encodings[word] for word in game_step["state"].split()],self.sentence_length),
-                    #  "timesteps" : timestep, "actions" : [word_encodings[act], word_encodings[mod],word_encodings[obj]]})
-                    # tokenized_state = self.tz( "[CLS] " +game_step["state"] + " [SEP] " + episode["question"] + " [SEP]",padding='max_length',add_special_tokens=False, truncation=True, max_length = self.sentence_length)
-                    # tokenized_action = self.tz(f"{act} {mod} {obj}", add_special_tokens=False,padding='max_length',truncation=True, max_length = 10)
-                    trajectory.add({"rewards" : reward, "observations" :  self.pad_input([word_encodings[token] for token in game_step["state"].split()] + [word_encodings["<|>"]]+ [word_encodings[token] for token in episode["question"].split()]) ,
-                     "timesteps" : timestep, "actions" : [word_encodings[act],word_encodings[mod],word_encodings[obj]],"answer" : word_encodings[episode["answer"]],
-                     #"token_type_ids" : tokenized_state["token_type_ids"],
-                     })
+                    observations, actions = process_input(state=game_step["state"], question=episode["question"], command=" ".join([act,mod,obj]), sequence_length=self.sentence_length, word2id=word_encodings)
+
+                    trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : word_encodings[episode["answer"]],})
 
                 trajectories.append(trajectory)
 
         return trajectories
+
 class Trainer:
 
     def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler=None, eval_fns=None):
@@ -205,15 +225,6 @@ class QuestionAnsweringDataLoader(Dataset):
 
     def __getitem__(self, idx):
         return self.dataset[idx]
-
-class QuestionAnsweringTrainer(Trainer):
-
-    def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
-        super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
-        
-        self.dataset = QuestionAnsweringDataLoader(data)
-        self.dataloader = DataLoader(self.dataset,batch_size=batch_size,shuffle=True, num_workers=num_workers)
-        self.choice2id = self.dataset
 
     
 class QuestionAnsweringTrainer(Trainer):

@@ -1,3 +1,6 @@
+import sys
+sys.path.insert(0, './decision_transformer')
+
 import gym
 import numpy as np
 import torch
@@ -253,9 +256,9 @@ def experiment(
     for iter in range(variant['max_iters']):
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True)
         
-        if logs['training/train_loss_mean'] < min_loss:
+        if outputs['training/train_loss_mean'] < min_loss:
             min_loss = outputs['training/train_loss_mean']
-            torch.save(model,f"{args['model_out']}/{args['env']}.pt")
+            torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
         
         if log_to_wandb:
             wandb.log(outputs)

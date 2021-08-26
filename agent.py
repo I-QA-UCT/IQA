@@ -485,38 +485,6 @@ class Agent:
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
         
-    # def command_to_id(self,command):
-    #     act, mod, obj = "", "</s>" , "<pad>" 
-            
-    #     command = command.split()
-
-    #     if len(command) == 3:
-    #         act, mod, obj = command
-    #     elif len(command) == 2:
-    #         act,obj,mod = *command, "</s>"
-    #     elif len(command) == 1:
-    #             act = command[0]
-    
-    #     return [self.word2id[act],self.word2id[mod],self.word2id[obj]]
-                
-    # def pad_input(self,sentence,question,seq_len):
-        
-    #     # sentences_to_ids = []
-    #     # for sentence in sentences:
-    #         # print(sentence)
-    #     sentence = "<s> "+ sentence + " <|> " +question + " </s>"
-    #     # If word doesn't exist - return <unk>
-    #     sentence_ids = [self.word2id.get(word,1) for word in sentence.split()]
-
-    #     diff = len(sentence_ids) - seq_len
-
-    #     if diff > 0:
-    #         del sentence_ids[-(diff+1):-1]
-    #     elif diff < 0:
-    #         sentence_ids.extend(abs(diff)*[0])
-
-    #         # sentences_to_ids.append(sentence_ids)
-    #     return sentence_ids
 
     def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None):
         """
@@ -529,13 +497,14 @@ class Agent:
             chosen_indices = []
             chosen_strings = []
 
-            act,obj,mod = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps)
+            act, obj, mod, answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps)
             word_indices_dt = [act,obj,mod]
             chosen_indices.append(word_indices_dt)
             
             chosen_indices = torch.Tensor(chosen_indices).long()
             chosen_indices = torch.transpose(chosen_indices, 0, 1)
             chosen_strings = self.get_chosen_strings(chosen_indices)
+            chosen_answer = self.word_vocab[answer]
 
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
@@ -550,7 +519,7 @@ class Agent:
 
             # cache new info in current game step into caches
             self.prev_actions.append(chosen_strings)
-            return chosen_strings, replay_info
+            return chosen_strings, replay_info, chosen_answer
 
 
     def act(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words, random=False,use_ac=True):
