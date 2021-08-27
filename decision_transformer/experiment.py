@@ -58,7 +58,7 @@ def experiment(
     # print("\n".join(os.listdir()))
 
     # load dataset
-    dataset_filename = f'{env_name}.json'
+    dataset_filename = f'{dataset}.json'
     trajectories = JsonDataset(dataset_filename,state_dim,max_episodes=max_ep_len,use_bert=bert_embeddings)
 
     # save all path information into separate lists

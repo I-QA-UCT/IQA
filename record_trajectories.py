@@ -357,10 +357,11 @@ def train(variant):
 
                 agent.qa_replay_memory.push(False, qa_reward_np[b], answerer_input[b], questions[b], answers[b])
 
-                for step,state in enumerate(states):
+                for step,state in enumerate(states[:-1]):
                     
                     # Batch size of 1 so commands_per_step only has a single list inisde another list.
-                    split_commands = commands_per_step[0][step].split()
+                    split_commands = commands_per_step[0][step+1].split()
+                    print(split_commands, state)
                     act, mod, obj = "", "[PAD]" , "[PAD]" 
 
                     if len(split_commands) == 3:
@@ -385,7 +386,7 @@ def train(variant):
             # Recording reward if trajectory exists - i.e if sufficient info reward is > 0
             if trajectory:
                 cum_reward = 0            
-                for step,state in enumerate(states):
+                for step,state in enumerate(states[:-1]):
                     reward =  round(command_rewards_np[0][step],5)
                     trajectory["steps"][step]["reward"] = reward
                     cum_reward += reward
