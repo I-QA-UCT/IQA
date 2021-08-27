@@ -20,6 +20,7 @@ pip install wandb (Only for logging to wandb)
 pip install plotly (for plotting)
 pip install pandas (for plotting)
 pip install jsonlines (for plotting)
+pip install sklearn
 ```
 
 

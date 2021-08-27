@@ -730,6 +730,8 @@ class Agent:
         
         next_obs_list = obs_list[1:]
         obs_list = obs_list[0:-1]
+        quest_list = quest_list[1:]
+        action_list = action_list[0:-1]
 
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
