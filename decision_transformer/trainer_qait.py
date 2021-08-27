@@ -90,12 +90,12 @@ class JsonDataset(Dataset):
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
         
         # Shuffle data
-        random.seed(42)
-        random.shuffle(self.trajectories)
-        correct_trajectories_ind = set([i for i in range(len(self.trajectories)) if self.trajectories[i]["total_reward"].item() >= 1])
-        incorrct_traj_len =  round(len(correct_trajectories_ind)/correct_traj_prop * (1-correct_traj_prop))
-        incorrect_trajectories_ind = set(islice((i for i in range(len(self.trajectories)) if i not in correct_trajectories_ind),round(incorrct_traj_len)))
-        self.trajectories = [self.trajectories[i] for i in correct_trajectories_ind | incorrect_trajectories_ind]
+        # random.seed(42)
+        # random.shuffle(self.trajectories)
+        # correct_trajectories_ind = set([i for i in range(len(self.trajectories)) if self.trajectories[i]["total_reward"].item() >= 1])
+        # incorrct_traj_len =  round(len(correct_trajectories_ind)/correct_traj_prop * (1-correct_traj_prop))
+        # incorrect_trajectories_ind = set(islice((i for i in range(len(self.trajectories)) if i not in correct_trajectories_ind),round(incorrct_traj_len)))
+        # self.trajectories = [self.trajectories[i] for i in correct_trajectories_ind | incorrect_trajectories_ind]
 
     def __getitem__(self,index):
         return self.trajectories[index]
