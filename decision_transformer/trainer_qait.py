@@ -86,7 +86,7 @@ class JsonDataset(Dataset):
         self.max_episodes = max_episodes
         
         self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
-
+        print(self.tz)
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
         
         # Shuffle data

@@ -123,9 +123,9 @@ def experiment(
             r.append(traj['rewards'][si:si + max_len].reshape(1, -1, 1))
 
             ans.append(traj['answer'][si:si + max_len].reshape(1, -1, 1))
-
-            state_mask.append(traj['state_mask'][si:si + max_len].reshape(1, -1, state_dim))
-            action_mask.append(traj['action_mask'][si:si + max_len].reshape(1, -1, act_dim))
+            if 'state_mask' in traj and 'action_mask' in traj:
+                state_mask.append(traj['state_mask'][si:si + max_len].reshape(1, -1, state_dim))
+                action_mask.append(traj['action_mask'][si:si + max_len].reshape(1, -1, act_dim))
 
             timesteps.append(np.arange(si, si + s[-1].shape[1]).reshape(1, -1))
             timesteps[-1][timesteps[-1] >= max_ep_len] = max_ep_len-1  # padding cutoff
@@ -145,8 +145,10 @@ def experiment(
             timesteps[-1] = np.concatenate([np.zeros((1, max_len - tlen)), timesteps[-1]], axis=1)
             # Add in masks from trajectory object?
             mask.append(np.concatenate([np.zeros((1, max_len - tlen)), np.ones((1, tlen))], axis=1))
-            state_mask[-1] =  np.concatenate([np.zeros((1, max_len - tlen, state_dim)), state_mask[-1]], axis=1)
-            action_mask[-1] = np.concatenate([np.zeros((1, max_len - tlen, act_dim)), action_mask[-1]], axis=1)
+            
+            if state_mask and action_mask:
+                state_mask[-1] =  np.concatenate([np.zeros((1, max_len - tlen, state_dim)), state_mask[-1]], axis=1)
+                action_mask[-1] = np.concatenate([np.zeros((1, max_len - tlen, act_dim)), action_mask[-1]], axis=1)
 
         s = torch.from_numpy(np.concatenate(s, axis=0)).to(dtype=torch.long, device=device)
         a = torch.from_numpy(np.concatenate(a, axis=0)).to(dtype=torch.long, device=device)
@@ -155,9 +157,11 @@ def experiment(
         timesteps = torch.from_numpy(np.concatenate(timesteps, axis=0)).to(dtype=torch.long, device=device)
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(device=device)
         ans = torch.from_numpy(np.concatenate(ans, axis=0)).to(dtype=torch.long, device=device)
-
-        state_mask = torch.from_numpy(np.concatenate(state_mask, axis=0)).to(dtype=torch.long, device=device)
-        action_mask = torch.from_numpy(np.concatenate(action_mask, axis=0)).to(dtype=torch.long, device=device)
+        
+        if state_mask and action_mask:
+            state_mask = torch.from_numpy(np.concatenate(state_mask, axis=0)).to(dtype=torch.long, device=device)
+            action_mask = torch.from_numpy(np.concatenate(action_mask, axis=0)).to(dtype=torch.long, device=device)
+        
         return s, a, r, rtg, timesteps, mask, ans, state_mask, action_mask
 
     def eval_episodes(target_rew):
