@@ -86,7 +86,6 @@ class JsonDataset(Dataset):
         self.max_episodes = max_episodes
         
         self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
-        print(self.tz)
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
         
         # Shuffle data
@@ -130,7 +129,7 @@ class JsonDataset(Dataset):
                 # the list is True from X-1 until {episode_max-1} 
                 completed_terminals = self.max_episodes - len(episode["steps"])
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
-                trajectory["total_reward"] = [round(episode["total_reward"],5)]
+                # trajectory["total_reward"] = [round(episode["total_reward"],5)]
                 # trajectory["mask"] = episode["mask"]
                 for game_step in episode["steps"]:
                     
