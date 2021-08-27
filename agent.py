@@ -827,8 +827,8 @@ class Agent:
 
         if self.icm:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-            input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
-            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(obs_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_obs_list)
             
             if self.freeze_encoding:
                 with torch.no_grad():

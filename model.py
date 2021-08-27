@@ -560,45 +560,46 @@ class ICM_Inverse(torch.nn.Module):
     ICM - Inverse Model - used to predict action from two consecutive states. This enables the feature model to learn a valuable feature representation.
     """
 
-    def __init__(self, input_size, hidden_size,vocab_size):
+    def __init__(self, input_size, hidden_size,vocab_size,condition_decoding):
         super(ICM_Inverse, self).__init__()
-        
+
+        self.condition_decoding = condition_decoding
+
         self.action_decoder = torch.nn.Sequential(
             torch.nn.Linear(input_size,hidden_size),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
-
-        # self.modifier_decoder = torch.nn.Sequential(
-        #     torch.nn.Linear(input_size+vocab_size,hidden_size),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Linear(hidden_size,vocab_size))
-
-        # self.object_decoder = torch.nn.Sequential(
-        #     torch.nn.Linear(input_size+2*vocab_size,hidden_size),
-        #     torch.nn.LeakyReLU(),
-        #     torch.nn.Linear(hidden_size,vocab_size))
-
+        
+        if not self.condition_decoding:
+            condition_mod = 0
+            condition_obj = 0
+        else:
+            condition_mod = 1
+            condition_obj = 2
+        
         self.modifier_decoder = torch.nn.Sequential(
-            torch.nn.Linear(input_size,hidden_size),
+            torch.nn.Linear(input_size+condition_mod*vocab_size,hidden_size),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
 
         self.object_decoder = torch.nn.Sequential(
-            torch.nn.Linear(input_size,hidden_size),
+            torch.nn.Linear(input_size+condition_obj*vocab_size,hidden_size),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
+        
 
     def forward(self, state_feature, next_state_feature):
         input = torch.cat([state_feature, next_state_feature], dim=-1)
         rep = input
         
-        # action_dist = self.action_decoder(rep)
-        # modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
-        # object_dist = self.object_decoder(torch.cat([rep,action_dist,modifier_dist],dim=-1))
-
-        action_dist = self.action_decoder(rep)
-        modifier_dist = self.modifier_decoder(rep)
-        object_dist = self.object_decoder(rep)
+        if self.condition_decoding:
+            action_dist = self.action_decoder(rep)
+            modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
+            object_dist = self.object_decoder(torch.cat([rep,action_dist,modifier_dist],dim=-1))
+        else:
+            action_dist = self.action_decoder(rep)
+            modifier_dist = self.modifier_decoder(rep)
+            object_dist = self.object_decoder(rep)
 
         
         return action_dist,modifier_dist,object_dist
@@ -659,7 +660,7 @@ class ICM(torch.nn.Module):
             state_input_size, self.hidden_size, self.feature_size)
 
         self.inverse_model = ICM_Inverse(
-            feature_size*2, self.hidden_size,vocab_size)
+            feature_size*2, self.hidden_size,vocab_size,self.condition_decoding)
         self.forward_model = ICM_Forward(
             feature_size+action_size, self.hidden_size, feature_size)
         
@@ -679,6 +680,7 @@ class ICM(torch.nn.Module):
         self.inverse_loss_action_weight = self.config['icm']['inverse_action_weight']
         self.inverse_loss_modifier_weight = self.config['icm']['inverse_modifier_weight']
         self.inverse_loss_object_weight = self.config['icm']['inverse_object_weight']
+        self.condition_decoding = self.config['icm']['condition_decoding']
 
     def get_feature(self, state):
         """

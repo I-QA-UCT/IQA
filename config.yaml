@@ -79,6 +79,7 @@ icm:
   use_intrinsic_reward: False # use error as intrinsic motivation
   reward_scaling_factor: 0    # scale of error for reward
   inverse_reward: True        # use inverse models error as reward instead of forward model
+  condition_decoding: False   # use previous decoded word in decoding of future words in command triplet
  
   
 epsilon_greedy:
