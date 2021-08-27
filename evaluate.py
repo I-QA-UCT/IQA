@@ -23,6 +23,8 @@ from agent import Agent
 from textworld.gym import register_games, make_batch
 from query import process_facts
 
+from collections import Counter
+
 request_infos = textworld.EnvInfos(description=True,
                                    inventory=True,
                                    verbs=True,
@@ -63,8 +65,9 @@ def evaluate(data_path, agent,variant):
             n_inner=4*256,
             activation_function='tanh',
             n_positions=1024,
-            resid_pdrop=0.1,
-            attn_pdrop=0.1,
+            resid_pdrop=0.4,
+            attn_pdrop=0.4,
+            bert_embeddings=False,
         )
         model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
         model.eval()
@@ -119,7 +122,9 @@ def evaluate(data_path, agent,variant):
             state_strings = agent.get_state_strings(infos)
             counting_rewards = [agent.get_binarized_count(state_strings, update=True)] # batch x reward x timestep
             padded_state_history = []
+            state_masks = []
             padded_command_history = []
+            action_masks = []
 
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
@@ -138,13 +143,17 @@ def evaluate(data_path, agent,variant):
 
                 # Batch size of 1 for now
                 if decision_transformer:
-
-                    processed_state, processed_command = process_input(state=observation_strings_w_history[-1], question=questions[q_no],command=commands_per_step[0][-1], sequence_length=model.state_dim, word2id=word_encodings)
+                    (processed_state, state_mask), (processed_command, action_mask) = process_input(state=observation_strings_w_history[-1], question=questions[q_no],command=commands_per_step[0][-1], sequence_length=model.state_dim, word2id=word_encodings, pad_token="<pad>", tokenizer=None)
                     padded_state_history.append(processed_state)
                     padded_command_history.append(processed_command)
-                    # print(f"Step no: {step_no} | State: {observation_strings_w_history[-1]} | Prev command: {commands_per_step[i][-1]} | Question: {questions[q_no]} ")
+                    if state_mask and action_mask:
+                        state_masks.append(state_mask)
+                        action_masks.append(action_mask)
 
-                    commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model)
+                    # print(f"Step no: {step_no} | State: {observation_strings_w_history[-1]} | Prev command: {commands_per_step[i][-1]} | Question: {questions[q_no]} ")
+                    
+                    commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,list(range(step_no+1)),obs, padded_state_history, counting_rewards,model=model)
+                    
                     # print(f"Model: Action : {commands} | Answer {answer} | Question: {questions[q_no]}")
                     if "wait" in commands:
                         step_no = agent.eval_max_nb_steps_per_episode - 1
@@ -185,7 +194,6 @@ def evaluate(data_path, agent,variant):
 
             # rewards
             # qa reward
-            # print(answers, chosen_answers)
             qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
             # sufficient info rewards
             masks = [item[-1] for item in transition_cache]
@@ -225,11 +233,11 @@ def evaluate(data_path, agent,variant):
             r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
-        print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+        # print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
 
         env.close()
 
-    # print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+    print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
     return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)
 
 if (__name__ == "__main__"):

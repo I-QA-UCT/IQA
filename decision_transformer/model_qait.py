@@ -83,10 +83,9 @@ class DecisionTransformer(nn.Module):
             *([nn.Linear(hidden_size, self.vocab_size)])
         )
         
-    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None):
+    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None, state_mask=None, action_mask=None):
 
         batch_size, seq_length = states.shape[0], states.shape[1]
-
         # word masks - possible words for decoder and then use masked softmax to get actual distribution
 
         if attention_mask is None:
@@ -97,13 +96,12 @@ class DecisionTransformer(nn.Module):
         # actions will be a tensor of word ids of the state i.e batch x 3 
 
         # embed each modality with a different
-
         # Embded state with GRU
         encoded_states = []
         if self.bert_embeddings:
             state_word_embeddings = []
             for batch in range(len(states[0])):
-                embedded_state = self.bert(input_ids=states[:,batch,:])
+                embedded_state = self.bert(input_ids=states[:,batch,:],attention_mask=state_mask[:,batch,:])
                 state_word_embeddings.append(embedded_state["last_hidden_state"])
             state_word_embeddings = torch.stack(state_word_embeddings,dim=1)
         else:
@@ -119,7 +117,7 @@ class DecisionTransformer(nn.Module):
         if self.bert_embeddings:
             action_word_embeddings = []
             for batch in range(len(actions[0])):
-                embedded_action = self.bert(input_ids=actions[:,batch,:])
+                embedded_action = self.bert(input_ids=actions[:,batch,:],attention_mask=action_mask[:,batch,:])
                 action_word_embeddings.append(embedded_action["last_hidden_state"])
             action_word_embeddings = torch.stack(action_word_embeddings,dim=1)
         else:
@@ -185,42 +183,48 @@ class DecisionTransformer(nn.Module):
         return action_preds, modifier_preds, object_preds, answer_preds
 
 
-    def get_command(self, states, actions, returns_to_go, timesteps, **kwargs):
+    def get_command(self, states, actions, returns_to_go, timesteps, state_mask, action_mask,**kwargs):
 
+        if state_mask and action_mask:
+            state_masks = torch.Tensor(state_mask).reshape(1, -1, self.state_dim).long()
+            action_masks = torch.Tensor(action_mask).reshape(1, -1, self.state_dim).long()
+        else:
+            state_masks = None
+            action_masks = None
         states = torch.Tensor(states).reshape(1, -1, self.state_dim).long()
         actions = torch.Tensor(actions).reshape(1, -1, self.act_dim).long()
         returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1)
         timesteps = torch.Tensor(timesteps).reshape(1, -1).long()
-        # print(states.size())
-        # if self.max_length is not None:
-        #     states = states[:,-self.max_length:]
-        #     actions = actions[:,-self.max_length:]
-        #     returns_to_go = returns_to_go[:,-self.max_length:]
-        #     timesteps = timesteps[:,-self.max_length:]
 
-        #     # pad all tokens to sequence length
-        #     attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
-        #     attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
-        #     states = torch.cat(
-        #         [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
-        #         dim=1).to(dtype=torch.long)
-        #     actions = torch.cat(
-        #         [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
-        #                      device=actions.device), actions],
-        #         dim=1).to(dtype=torch.long)
-        #     returns_to_go = torch.cat(
-        #         [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
-        #         dim=1).to(dtype=torch.float32)
-        #     timesteps = torch.cat(
-        #         [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
-        #         dim=1
-        #     ).to(dtype=torch.long)
-        # else:
-        #     attention_mask = None
+        if self.max_length is not None:
+            states = states[:,-self.max_length:]
+            actions = actions[:,-self.max_length:]
+            returns_to_go = returns_to_go[:,-self.max_length:]
+            timesteps = timesteps[:,-self.max_length:]
+
+            # pad all tokens to sequence length
+            attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
+            attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
+            states = torch.cat(
+                [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
+                dim=1).to(dtype=torch.long)
+            actions = torch.cat(
+                [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
+                             device=actions.device), actions],
+                dim=1).to(dtype=torch.long)
+            returns_to_go = torch.cat(
+                [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
+                dim=1).to(dtype=torch.float32)
+            timesteps = torch.cat(
+                [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
+                dim=1
+            ).to(dtype=torch.long)
+        else:
+            attention_mask = None
             
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
-            states, actions, None, returns_to_go, timesteps, attention_mask=None, **kwargs)
-        
+            states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, **kwargs)
+
         softmax = nn.Softmax(dim=0)
         action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[0,-1]))
         modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[0,-1]))

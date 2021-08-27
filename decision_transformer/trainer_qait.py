@@ -7,57 +7,95 @@ from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
 from transformers import BertTokenizer
 
 from collections import defaultdict, deque
+from itertools import islice
 
 import time
 import json
+import random
 
 RELATIVE_PATH = "decision_transformer/data/"
 
 WORD_ENCODINGS = RELATIVE_PATH + "word_encodings.json"
 
-def process_input(state, question, command, sequence_length, word2id):
+def process_input(state, question, command, sequence_length, word2id, pad_token, tokenizer):
 
     def command_to_id(command):
-        act, mod, obj = "", "<pad>" , "<pad>" 
-            
-        command = command.split()
+        attn_mask = None
+        if tokenizer is None:
+            command = command.replace("[PAD]",pad_token).split()
+            if len(command) == 1:
+                act, mod, obj = *command, pad_token, pad_token
+            elif len(command) == 2:
+                act, obj, mod  = *command, "</s>"
+            else:
+                act, mod, obj = command
 
-        if len(command) == 3:
-            act, mod, obj = command
-        elif len(command) == 2:
-            act, obj, mod = command, "</s>"            
-        elif len(command) == 1:
-            act = command[0]
-    
-        return [word2id[act],word2id[mod],word2id[obj]]
+            if mod == pad_token:
+                mod = "</s>"
+            command_ids = [word2id[act],word2id[mod],word2id[obj]]
+        else:
+            encoded = tokenizer.encode_plus(
+                text=command,  # the sentence to be encoded
+                add_special_tokens=False,  # Add [CLS] and [SEP]
+                max_length = 10,  # maximum length of a command
+                pad_to_max_length=True,  # Add [PAD]s
+                return_attention_mask = True,  # Generate the attention mask
+                truncation=True # Truncates sentence if it's longer than maxi length
+            )
+            command_ids = encoded['input_ids']
+            attn_mask = encoded['attention_mask']
+        
+        return command_ids, attn_mask
 
     def state_question_to_id(state, question, seq_len):
-        
-        state = state + " <|> " +question
+        attn_mask=None
+        if tokenizer is not None:
+            state = "[CLS] " + " ".join(state.replace("<|>","").split())  + " [SEP] " + question +  " [SEP]"
+            
+            encoded = tokenizer.encode_plus(
+                text=state,  # the sentence to be encoded
+                add_special_tokens=False,  # Add [CLS] and [SEP]
+                max_length = seq_len,  # maximum length of a sentence
+                pad_to_max_length=True,  # Add [PAD]s
+                return_attention_mask = True,  # Generate the attention mask
+                truncation=True # Truncates sentence if it's longer than maxi length
+            )
+            state_question_ids = encoded['input_ids']
+            attn_mask = encoded['attention_mask']
+        else:
+            state = state + " <|> " +question
 
         # If word doesn't exist - return <unk>
-        state_question_ids = [word2id.get(word,1) for word in state.split()]
+            state_question_ids = [word2id.get(word,1) for word in state.split()]
 
-        diff = len(state_question_ids) - seq_len
+            diff = len(state_question_ids) - seq_len
 
-        if diff > 0:
-            del state_question_ids[-(diff+1):-1]
-        elif diff < 0:
-            state_question_ids.extend(abs(diff)*[0])
+            if diff > 0:
+                del state_question_ids[-(diff+1):-1]
+            elif diff < 0:
+                state_question_ids.extend(abs(diff)*[0])
 
-        return state_question_ids
+        return state_question_ids, attn_mask
 
-    return state_question_to_id(state,question,sequence_length),command_to_id(command)
+    return state_question_to_id(state,question,sequence_length), command_to_id(command)
 
 class JsonDataset(Dataset):
 
-    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50):      
+    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50, correct_traj_prop=0.7, use_bert=False):      
         self.sentence_length = sentence_length
         self.max_episodes = max_episodes
-        self.tz = BertTokenizer.from_pretrained('bert-base-uncased')#,unk_token="<unk>",sep_token="<|>",pad_token="<pad>",bos_token="<s>",eos_token="</s>")
+        
+        self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
 
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
-
+        
+        # Shuffle data
+        random.seed(42)
+        random.shuffle(self.trajectories)
+        correct_trajectories_ind = set([i for i in range(len(self.trajectories)) if self.trajectories[i]["total_reward"].item() >= 1])
+        incorrct_traj_len =  round(len(correct_trajectories_ind)/correct_traj_prop * (1-correct_traj_prop))
+        incorrect_trajectories_ind = set(islice((i for i in range(len(self.trajectories)) if i not in correct_trajectories_ind),round(incorrct_traj_len)))
+        self.trajectories = [self.trajectories[i] for i in correct_trajectories_ind | incorrect_trajectories_ind]
 
     def __getitem__(self,index):
         return self.trajectories[index]
@@ -77,7 +115,7 @@ class JsonDataset(Dataset):
             word_encodings = json.load(word_encodings_data)
             commands = ["action","modifier","object"]
 
-            PAD_tag = "[PAD]"
+            PAD_tag = "[PAD]" if self.tz is not None else "<pad>"
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
                 
@@ -92,9 +130,8 @@ class JsonDataset(Dataset):
                 # the list is True from X-1 until {episode_max-1} 
                 completed_terminals = self.max_episodes - len(episode["steps"])
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
-                
-                trajectory["mask"] = episode["mask"]
-
+                trajectory["total_reward"] = [round(episode["total_reward"],5)]
+                # trajectory["mask"] = episode["mask"]
                 for game_step in episode["steps"]:
                     
                     # game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
@@ -103,24 +140,20 @@ class JsonDataset(Dataset):
                     command = game_step["command"]
                     act, mod, obj = command["action"], command["modifier"], command["object"]
                     
-                    if mod == PAD_tag and obj != PAD_tag:
-                        mod, obj = obj, mod
-
-                    if mod == PAD_tag:
-                        mod = "<pad>"
-                    
-                    if obj == PAD_tag:
-                        obj = "<pad>"
                     # Timestep
                     timestep = game_step['step']
 
                     # Get reward and add it to the negative total
                     # Thus, when all steps complete reward should = 0
                     reward = game_step["reward"]
-                    observations, actions = process_input(state=game_step["state"], question=episode["question"], command=" ".join([act,mod,obj]), sequence_length=self.sentence_length, word2id=word_encodings)
 
-                    trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : word_encodings[episode["answer"]],})
-
+                    (observations, state_mask), (actions, action_mask) = process_input(state=game_step["state"], question=episode["question"], command=" ".join([act,mod,obj]), sequence_length=self.sentence_length, word2id=word_encodings,pad_token=PAD_tag,tokenizer=self.tz)
+                    trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : word_encodings[episode["answer"]]})
+                    
+                    # If bert embeddings are used, add the masks to the trajectory.
+                    if state_mask and action_mask:
+                        trajectory.add({"state_mask" : state_mask, "action_mask" : action_mask,})
+                
                 trajectories.append(trajectory)
 
         return trajectories
@@ -313,7 +346,7 @@ class QuestionAnsweringTrainer(Trainer):
 class SequenceTrainer(Trainer):
 
     def train_step(self):
-        states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, game_mask = self.get_batch(self.batch_size)
+        states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, state_mask, action_mask = self.get_batch(self.batch_size)
 
         vocab_size = self.model.vocab_size
 
@@ -321,7 +354,7 @@ class SequenceTrainer(Trainer):
         action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
 
         action_preds, modifier_preds, object_preds, answer_preds = self.model.forward(
-        states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask)
+        states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask, state_mask=state_mask, action_mask=action_mask)
         
         answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
         answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]

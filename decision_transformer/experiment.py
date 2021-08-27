@@ -16,9 +16,6 @@ import sys
 from evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 from model_qait import DecisionTransformer
 from trainer_qait import JsonDataset, SequenceTrainer 
-# from decision_transformer.training.act_trainer import ActTrainer
-# from decision_transformer.training.seq_trainer import SequenceTrainer
-
 
 
 def discount_cumsum(x, gamma):
@@ -43,24 +40,26 @@ def experiment(
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
 
     # valid_env_names = set(['random_rollout','dqn_loc'])
-
+    bert_embeddings = True if variant['embed_type'] == "bert" else False 
     # if env_name in valid_env_names:
     max_ep_len = 50
     env_targets = [3600, 1800]  # evaluation conditioning targets
     scale = 10.  # normalization for rewards/returns
     # else:
     #     raise NotImplementedError
-
     act_dim = 3 # act, mod, obj
     state_dim = variant["sentence_tensor_length"] # Number of tokens in the state string
+
+    if bert_embeddings:
+        act_dim += 7 # Make the action dimension 10 if bert is used
+        state_dim += 20 # Add 20 tokens to the state embedding if bert is used (for subword)
 
     import os
     # print("\n".join(os.listdir()))
 
     # load dataset
     dataset_filename = f'{env_name}.json'
-    trajectories = JsonDataset(dataset_filename,state_dim)
-
+    trajectories = JsonDataset(dataset_filename,state_dim,max_episodes=max_ep_len,use_bert=bert_embeddings)
 
     # save all path information into separate lists
     mode = "normal"
@@ -112,7 +111,7 @@ def experiment(
             p=p_sample,  # reweights so we sample according to timesteps
         )
 
-        s, a, r, rtg, timesteps, mask, ans, game_mask = [], [], [], [], [], [], [], []
+        s, a, r, rtg, timesteps, ans, mask, state_mask, action_mask = [], [], [], [], [], [], [], [], []
         for i in range(batch_size):
 
             traj = trajectories[int(sorted_inds[batch_inds[i]])]
@@ -125,7 +124,8 @@ def experiment(
 
             ans.append(traj['answer'][si:si + max_len].reshape(1, -1, 1))
 
-            game_mask.append(traj['mask'][si:si + max_len].reshape(1, -1))
+            state_mask.append(traj['state_mask'][si:si + max_len].reshape(1, -1, state_dim))
+            action_mask.append(traj['action_mask'][si:si + max_len].reshape(1, -1, act_dim))
 
             timesteps.append(np.arange(si, si + s[-1].shape[1]).reshape(1, -1))
             timesteps[-1][timesteps[-1] >= max_ep_len] = max_ep_len-1  # padding cutoff
@@ -145,8 +145,9 @@ def experiment(
             timesteps[-1] = np.concatenate([np.zeros((1, max_len - tlen)), timesteps[-1]], axis=1)
             # Add in masks from trajectory object?
             mask.append(np.concatenate([np.zeros((1, max_len - tlen)), np.ones((1, tlen))], axis=1))
-            game_mask[-1] = np.concatenate([np.zeros((1, max_len - tlen)), game_mask[-1]], axis=1)
-        
+            state_mask[-1] =  np.concatenate([np.zeros((1, max_len - tlen, state_dim)), state_mask[-1]], axis=1)
+            action_mask[-1] = np.concatenate([np.zeros((1, max_len - tlen, act_dim)), action_mask[-1]], axis=1)
+
         s = torch.from_numpy(np.concatenate(s, axis=0)).to(dtype=torch.long, device=device)
         a = torch.from_numpy(np.concatenate(a, axis=0)).to(dtype=torch.long, device=device)
         r = torch.from_numpy(np.concatenate(r, axis=0)).to(dtype=torch.float32, device=device)
@@ -154,8 +155,10 @@ def experiment(
         timesteps = torch.from_numpy(np.concatenate(timesteps, axis=0)).to(dtype=torch.long, device=device)
         mask = torch.from_numpy(np.concatenate(mask, axis=0)).to(device=device)
         ans = torch.from_numpy(np.concatenate(ans, axis=0)).to(dtype=torch.long, device=device)
-        game_mask = torch.from_numpy(np.concatenate(game_mask, axis=0)).to(dtype=torch.long, device=device)
-        return s, a, r, rtg, timesteps, mask, ans, game_mask
+
+        state_mask = torch.from_numpy(np.concatenate(state_mask, axis=0)).to(dtype=torch.long, device=device)
+        action_mask = torch.from_numpy(np.concatenate(action_mask, axis=0)).to(dtype=torch.long, device=device)
+        return s, a, r, rtg, timesteps, mask, ans, state_mask, action_mask
 
     def eval_episodes(target_rew):
         def fn(model):
@@ -213,7 +216,7 @@ def experiment(
             n_positions=1024,
             resid_pdrop=variant['dropout'],
             attn_pdrop=variant['dropout'],
-            bert_embeddings= True if variant['embed_type'] == "bert" else False,
+            bert_embeddings= bert_embeddings,
         )
     else:
         raise NotImplementedError

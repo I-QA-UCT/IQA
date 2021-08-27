@@ -49,7 +49,8 @@ def train(variant):
     game_information_pattern = re.compile(r"(.*) <\|> -= (.*) = -(.*)<\|> (.*)")
     data_path = variant["data_path"]
 
-    with open(f"{variant['data_out_path']}/{variant['offline_rl_type']}.json","w") as offline_rl_data:
+    write_append_code = "a" if variant["append"] else "w"
+    with open(f"{variant['data_out_path']}/{variant['environment']}.json",write_append_code) as offline_rl_data:
 
         time_1 = datetime.datetime.now()
         agent = Agent()
@@ -347,7 +348,10 @@ def train(variant):
             # push qa experience into qa replay buffer
             for b in range(batch_size):  # data points in batch
                 # if the agent is not in the correct state, do not push it into replay buffer
-                if np.sum(sufficient_info_reward_np[b]) == 0.0:
+
+                # if sufficient information score is LESS than some threshold value - do not
+                # record the trajectory as a part of the training.
+                if np.sum(sufficient_info_reward_np[b]) < variant["sufficient_information_threshold"]:
                     continue
                 trajectory = {"episode_no" : episode_no, "steps" : [], "question" : questions[0],"answer" : answers[0], "mask" : list(game_finishing_mask[:,0]) }
 
@@ -470,7 +474,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_path","-path",
                         default="./",
                         help="where the data (games) are.")
-    parser.add_argument("--offline_rl_type","-rl",
+    parser.add_argument("--environment","-env",
                     default="random_rollouts",
                     help="The type of offline RL being recorded.")
     # parser.add_argument("--experiment_id","-id",
@@ -479,8 +483,15 @@ if __name__ == '__main__':
     parser.add_argument("--data_out_path","-out",
                     default="./decision_transformer/data",
                     help="Output path of recorded trajectories.")
+    
+    parser.add_argument("--append","-a",
+                    type=bool,
+                    default=True)
 
-                                           
+    parser.add_argument("--sufficient_information_threshold","-sui",
+                    type=float,
+                    default=1.0)
+
     args = parser.parse_args()
 
     train(variant=vars(args))

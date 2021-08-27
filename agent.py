@@ -417,6 +417,7 @@ class Agent:
             adj: Index of the guessing adjective in vocabulary
             noun: Index of the guessing noun in vocabulary
         """
+
         # turns 3 indices into actual command strings
         if self.word_vocab[verb] in self.single_word_verbs:
             return self.word_vocab[verb]
@@ -486,7 +487,7 @@ class Agent:
             return chosen_strings, replay_info
         
 
-    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None):
+    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None, state_masks=None, action_masks=None):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
@@ -497,15 +498,15 @@ class Agent:
             chosen_indices = []
             chosen_strings = []
 
-            act, obj, mod, answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps)
-            word_indices_dt = [act,obj,mod]
+            act, mod, obj, answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps, state_masks, action_masks)
+            
+            word_indices_dt = [act,mod,obj]
             chosen_indices.append(word_indices_dt)
             
             chosen_indices = torch.Tensor(chosen_indices).long()
             chosen_indices = torch.transpose(chosen_indices, 0, 1)
             chosen_strings = self.get_chosen_strings(chosen_indices)
             chosen_answer = self.word_vocab[answer]
-
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
                     self.not_finished_yet[i] = 0.0
