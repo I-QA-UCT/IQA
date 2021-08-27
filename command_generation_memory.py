@@ -42,7 +42,6 @@ class SingleEpisodeStorage():
             action_entropies_list.append(action_entropies)
             is_finals.append(is_final)
            
-        
         return state_input_list,action_input_list,next_state_input_list,obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
 
            

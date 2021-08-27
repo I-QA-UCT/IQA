@@ -110,7 +110,7 @@ class Agent:
         # A2C
         self.a2c = self.config['a2c']['enable']
         self.entropy_coeff = self.config['a2c']['entropy_coefficient']
-
+        
         # ICM
         self.icm = self.config['icm']['enable']
         self.use_intrinsic_reward = self.config['icm']['use_intrinsic_reward']
@@ -728,12 +728,15 @@ class Agent:
 
         state_list,action_list,next_state_list,obs_list, quest_list, possible_words_list, word_indices_list, rewards, state_values, action_log_probs, action_entropies, is_finals = data
         
+        next_obs_list = obs_list[1:]
+        obs_list = obs_list[0:-1]
+
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
         if self.icm:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
-            input_state,input_state_chars,_ = self.get_agent_inputs(state_list)
-            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_state_list)
+            input_state,input_state_chars,_ = self.get_agent_inputs(obs_list)
+            input_next_state,input_next_state_chars,_ = self.get_agent_inputs(next_obs_list)
             if self.freeze_encoding:
                 with torch.no_grad():
                     encoded_states = self.get_match_representations(input_state,input_state_chars,input_quest,input_quest_char)

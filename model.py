@@ -362,6 +362,8 @@ class ActorCritic(torch.nn.Module):
         self.question_answerer_hidden_dim = model_config['question_answerer_hidden_dim']
         self.noisy_net = self.config['epsilon_greedy']['noisy_net']
         self.icm = self.config['icm']['enable']
+        self.condition_commands = self.config['a2c']['condition_commands']
+        
 
     def _def_layers(self):
         """
@@ -414,8 +416,11 @@ class ActorCritic(torch.nn.Module):
         action_scorers = []
 
         for i in range(self.generate_length):
+            condition = i
+            if not self.condition_commands:
+                condition = 0
             action_scorers.append(linear_function(
-                self.action_scorer_hidden_dim+i*action_scorer_output_size, action_scorer_output_size))
+                self.action_scorer_hidden_dim+condition*action_scorer_output_size, action_scorer_output_size))
 
         self.action_scorers = torch.nn.ModuleList(action_scorers)
         self.critic = linear_function(self.action_scorer_hidden_dim, 1)
@@ -484,12 +489,17 @@ class ActorCritic(torch.nn.Module):
         prev = q
 
         for i in range(1, self.generate_length):
-            a_rank = self.action_scorers[i](
-                torch.cat((hidden, prev), dim=1))  # batch x n_vocab
+            if self.condition_commands:
+                input_val = torch.cat((hidden, prev), dim=1)
+            else:
+                input_val = hidden
+            
+            a_rank = self.action_scorers[i](input_val)  # batch x n_vocab
 
             q = masked_softmax(a_rank, word_masks[i])  # batch x vocab
 
             action_probs.append(q)
+
             prev = torch.cat((prev, q), dim=1)
 
         state_value = self.critic(hidden)
@@ -558,22 +568,39 @@ class ICM_Inverse(torch.nn.Module):
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
 
+        # self.modifier_decoder = torch.nn.Sequential(
+        #     torch.nn.Linear(input_size+vocab_size,hidden_size),
+        #     torch.nn.LeakyReLU(),
+        #     torch.nn.Linear(hidden_size,vocab_size))
+
+        # self.object_decoder = torch.nn.Sequential(
+        #     torch.nn.Linear(input_size+2*vocab_size,hidden_size),
+        #     torch.nn.LeakyReLU(),
+        #     torch.nn.Linear(hidden_size,vocab_size))
+
         self.modifier_decoder = torch.nn.Sequential(
-            torch.nn.Linear(input_size+vocab_size,hidden_size),
+            torch.nn.Linear(input_size,hidden_size),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
 
         self.object_decoder = torch.nn.Sequential(
-            torch.nn.Linear(input_size+2*vocab_size,hidden_size),
+            torch.nn.Linear(input_size,hidden_size),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_size,vocab_size))
 
     def forward(self, state_feature, next_state_feature):
         input = torch.cat([state_feature, next_state_feature], dim=-1)
         rep = input
+        
+        # action_dist = self.action_decoder(rep)
+        # modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
+        # object_dist = self.object_decoder(torch.cat([rep,action_dist,modifier_dist],dim=-1))
+
         action_dist = self.action_decoder(rep)
-        modifier_dist = self.modifier_decoder(torch.cat([rep,action_dist],dim=-1))
-        object_dist = self.object_decoder(torch.cat([rep,action_dist,modifier_dist],dim=-1))
+        modifier_dist = self.modifier_decoder(rep)
+        object_dist = self.object_decoder(rep)
+
+        
         return action_dist,modifier_dist,object_dist
 
 
@@ -582,8 +609,6 @@ class ICM_Forward(torch.nn.Module):
     def __init__(self, input_size, hidden_size, feature_size):
         super(ICM_Forward, self).__init__()
         self.forward_net = torch.nn.Sequential(
-            torch.nn.Linear(input_size, hidden_size),
-            torch.nn.ELU(),
             torch.nn.Linear(hidden_size, hidden_size),
             torch.nn.ELU(),
             torch.nn.Linear(hidden_size, feature_size)
@@ -685,8 +710,6 @@ class ICM(torch.nn.Module):
     def get_predicted_state(self, state, action):
         """
 
-        TODO: depending on action representation maybe dont detach
-
         Use the forward model to predict the next state's feature representation.
         :param state: the current state.
         :param action: the action performed.
@@ -732,7 +755,12 @@ class ICM(torch.nn.Module):
         :param next_state: the next state after action.
         :return : MSE loss of the forward model.
         """
-        next_state_feature = self.get_feature(next_state)
+        if self.use_feature_net:
+            next_state_feature = self.get_feature(next_state)
+        else:
+            next_state_feature, _ = torch.max(next_state, 1)
+
+
         predicted_state_feature = self.get_predicted_state(state, action)
         
         return F.mse_loss(predicted_state_feature, next_state_feature,reduction='none').mean(dim=-1)
