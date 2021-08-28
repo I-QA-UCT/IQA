@@ -15,18 +15,11 @@ def init_openIE():
     os.system(cmd)
     print("Stanford Open IE initialised and listening on port 9000.")
 
-def openIE(sentence):
-    url = "http://localhost:9000/"
-    querystring = {
-        "properties": "%7B%22annotators%22%3A%20%22openie%22%7D", #{"annotators": "openie"}
-        "pipelineLanguage": "en"}
-    response = requests.request("POST", url, data=sentence, params=querystring)
-    response = json.JSONDecoder().decode(response.text)
-    return response
+
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_bert, bert_size, device):
+    def __init__(self, use_bert, bert_size, device, port):
     
         self.use_bert = use_bert
         self.vocab, self.vocab_er = self.load_files()
@@ -45,7 +38,7 @@ class SupplementaryKG(object):
         self.embeds = []
         self.bert_lookup = {}
 
-        init_openIE()
+        self.port = port
 
     def load_files(self):
         vocab = {}
@@ -73,6 +66,15 @@ class SupplementaryKG(object):
             
             return vocab, entity_relation_dict
 
+    def openIE(self,sentence):
+        url = "http://localhost:" + str(self.port) + "/"
+        querystring = {
+            "properties": "%7B%22annotators%22%3A%20%22openie%22%7D", #{"annotators": "openie"}
+            "pipelineLanguage": "en"}
+        response = requests.request("POST", url, data=sentence, params=querystring)
+        response = json.JSONDecoder().decode(response.text)
+        return response
+
     def set_entities(self, path):
         file_in = open(path, 'r')
         self.entities = eval(file_in.readline())
@@ -94,8 +96,9 @@ class SupplementaryKG(object):
         self.visible_state = str(visible_state)
 
         rules = []
+
         #Run visible state through Standford OpenIE and extract triple into list of rules
-        sents = openIE(self.visible_state)['sentences']
+        sents = self.openIE(self.visible_state)['sentences']
         for obv in sents:
             triple = obv['openie']
             for tr in triple:
@@ -294,6 +297,3 @@ class SupplementaryKG(object):
         else:
             self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix, device =self.device)
 
-if __name__ == '__main__':
-
-    test = SupplementaryKG()

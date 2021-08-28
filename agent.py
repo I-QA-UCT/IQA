@@ -50,7 +50,7 @@ class Agent:
             self.target_net.cuda()
 
         params = self.config['gat']
-        self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device)
+        self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
         # params['vocab_size'] = len(self.state.vocab)
         # params['use_cuda'] = self.config['general']['use_cuda']
 
@@ -627,6 +627,7 @@ class Agent:
         batch_size = len(actual_n_list)
 
         loader = DataLoader(kg_info_data, batch_size=batch_size)
+        
         batch = next(iter(loader))
         gat_out = self.GAT(batch, temp1)
 
