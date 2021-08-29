@@ -90,7 +90,7 @@ class DecisionTransformer(nn.Module):
 
         if attention_mask is None:
             # attention mask for GPT: 1 if can be attended to, 0 if not
-            attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long)
+            attention_mask = torch.ones((batch_size, seq_length), dtype=torch.long, device=device)
 
         # states will be a tensor of word ids of the state i.e batch x sequence (number of words in observation) 
         # actions will be a tensor of word ids of the state i.e batch x 3 
