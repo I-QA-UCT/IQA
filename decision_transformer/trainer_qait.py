@@ -170,7 +170,7 @@ class Trainer:
 
         self.start_time = time.time()
 
-    def train_iteration(self, num_steps, iter_num=0, print_logs=False):
+    def train_iteration(self, num_steps, iter_num=0, print_logs=False, evaluate=True):
 
         train_losses = []
         logs = dict()
@@ -186,13 +186,14 @@ class Trainer:
 
         logs['time/training'] = time.time() - train_start
 
-        eval_start = time.time()
+        if evaluate:
+            eval_start = time.time()
 
-        self.model.eval()
-        for eval_fn in self.eval_fns:
-            outputs = eval_fn(self.model)
-            for k, v in outputs.items():
-                logs[f'evaluation/{k}'] = v
+            self.model.eval()
+            for eval_fn in self.eval_fns:
+                outputs = eval_fn(self.model)
+                for k, v in outputs.items():
+                    logs[f'evaluation/{k}'] = v
 
         logs['time/total'] = time.time() - self.start_time
         logs['time/evaluation'] = time.time() - eval_start

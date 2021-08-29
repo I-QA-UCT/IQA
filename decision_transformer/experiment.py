@@ -238,7 +238,7 @@ def experiment(
     print("========== Beginning Training ==========\n")
     best_sufficient_info_score = float("-inf")
     for iter in range(variant['max_iters']):
-        outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True)
+        outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
         
         if outputs['evaluation/eval_sufficient_info_reward'] > best_sufficient_info_score:
             best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
@@ -282,6 +282,8 @@ if __name__ == '__main__':
     parser.add_argument('--answer_question', '-qa', type=bool, default=False)
     parser.add_argument('--embed_type', type=str, default="normal")
     parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
+    parser.add_argument('--eval_per_iter', type=int, default=100)
+
 
     args = parser.parse_args()
 
