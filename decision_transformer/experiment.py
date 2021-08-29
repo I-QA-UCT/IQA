@@ -240,7 +240,7 @@ def experiment(
     for iter in range(variant['max_iters']):
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
         
-        if 'evaluation/eval_sufficient_info_reward' in outputs['evaluation/eval_sufficient_info_reward'] > best_sufficient_info_score:
+        if 'evaluation/eval_sufficient_info_reward' in outputs and outputs['evaluation/eval_sufficient_info_reward'] > best_sufficient_info_score:
             best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
             torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
         
