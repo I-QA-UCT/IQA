@@ -378,6 +378,26 @@ def get_sufficient_info_reward_location(reward_helper_info):
     res = res.reshape((1, res.shape[0])) * game_finishing_mask
     return res.T  # batch x game step
 
+def get_sufficient_info_reward_location_during(reward_helper_info):
+    asked_entities = reward_helper_info["_entities"]
+    answers = reward_helper_info["_answers"]
+    observation_before_finish = reward_helper_info["observation_before_finish"]
+    # game_finishing_mask = reward_helper_info["game_finishing_mask"]  # game step x batch size
+    res = []
+    for ent, a, obs in zip(asked_entities, answers, observation_before_finish):
+        obs = obs.split()
+        flag = True
+        for w in ent.split() + a.split():
+            if w not in obs:
+                res.append(0.0)
+                flag = False
+                break
+        if flag:
+            res.append(1.0)
+    # res =  np.array(res)
+    # res = res.reshape((1, res.shape[0])) * game_finishing_mask
+    return res  # batch x game step
+
 
 def exploration_coverage(full_facts, end_facts, init_facts):
     containers_in_this_game = set([v for p in full_facts for v in p.arguments if v.type == "c"])

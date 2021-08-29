@@ -83,7 +83,7 @@ class DecisionTransformer(nn.Module):
             *([nn.Linear(hidden_size, self.vocab_size)])
         )
         
-    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None, state_mask=None, action_mask=None):
+    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None, state_mask=None, action_mask=None, device="cuda"):
 
         batch_size, seq_length = states.shape[0], states.shape[1]
         # word masks - possible words for decoder and then use masked softmax to get actual distribution
@@ -223,7 +223,7 @@ class DecisionTransformer(nn.Module):
         attention_mask = None
             
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
-            states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, **kwargs)
+            states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, device=device, **kwargs)
 
         softmax = nn.Softmax(dim=0)
         action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
