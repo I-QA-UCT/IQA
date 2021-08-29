@@ -1,6 +1,7 @@
 import argparse
 import torch
 import pickle
+import random
 
 import sys
 sys.path.insert(0, './decision_transformer')
@@ -24,6 +25,7 @@ from textworld.gym import register_games, make_batch
 from query import process_facts
 
 from collections import Counter
+from itertools import islice
 
 request_infos = textworld.EnvInfos(description=True,
                                    inventory=True,
@@ -41,7 +43,7 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def evaluate(data_path, agent,variant):
+def evaluate(data_path, agent, variant, model=None):
     """
     Evaluate an agent on a test set
     """
@@ -54,23 +56,26 @@ def evaluate(data_path, agent,variant):
         
         with open("decision_transformer/data/word_encodings.json") as word_encodings_data:
             word_encodings = json.load(word_encodings_data)
-        model = DecisionTransformer(
-            state_dim=180,
-            act_dim = 3,
-            max_length=50,
-            max_ep_len=50,
-            hidden_size=256,
-            n_layer=2,
-            n_head=8,
-            n_inner=4*256,
-            activation_function='tanh',
-            n_positions=1024,
-            resid_pdrop=0.4,
-            attn_pdrop=0.4,
-            bert_embeddings=False,
-        )
-        model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
-        model.eval()
+        
+        if model is None:
+            model = DecisionTransformer(
+                state_dim=180,
+                act_dim = 3,
+                max_length=50,
+                max_ep_len=50,
+                hidden_size=256,
+                n_layer=2,
+                n_head=8,
+                n_inner=4*256,
+                activation_function='tanh',
+                n_positions=1024,
+                resid_pdrop=0.4,
+                attn_pdrop=0.4,
+                bert_embeddings=False,
+            )
+            model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
+        else:
+            model.eval()
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -78,7 +83,25 @@ def evaluate(data_path, agent,variant):
     data = data["random_map"] if agent.random_map else data["fixed_map"]
 
     print_qa_reward, print_sufficient_info_reward = [], []
-    for game_path in tqdm(data):
+
+    # The number of episodes to be evaluated upon.
+    num_eval_episodes = agent.config["evaluate"]["eval_nb_episodes"]
+    
+    # Convert data to list so that it can be cut and/or shuffled (python 3.6 constraint)
+    data = list(data.items())
+
+    # Shuffles the order of evaluation.
+    if agent.config["evaluate"]["shuffle"]:
+        rng = random.Random(agent.config["general"]["random_seed"])
+        rng.shuffle(data)
+    
+    # Cannot evaluate on 0 or more than 500 games. 
+    if 1 <= num_eval_episodes <= 500:
+        data = dict(data[:num_eval_episodes])
+    else:
+        raise NotImplementedError
+
+    for game_path in tqdm(data, disable=agent.config["evaluate"]["silent"]):
         game_file_path = pjoin(data_path, game_path)
         assert os.path.exists(game_file_path), "Oh no! game path %s does not exist!" % game_file_path
         env_id = register_games([game_file_path], request_infos=request_infos)
@@ -120,7 +143,15 @@ def evaluate(data_path, agent,variant):
             transition_cache = []
 
             state_strings = agent.get_state_strings(infos)
-            counting_rewards = [agent.get_binarized_count(state_strings, update=True)] # batch x reward x timestep
+            if agent.config["evaluate"]['initial_reward'] > 0: 
+                initial_reward = agent.config["evaluate"]['initial_reward']
+            elif agent.config["evaluate"]['initial_reward'] == -1:    
+                # if agent.question_type == "location":
+                initial_reward = np.random.exponential(0.4)+1
+            else:
+                raise NotImplementedError
+
+            rewards = [[initial_reward]] # batch x reward x timestep
             padded_state_history = []
             state_masks = []
             padded_command_history = []
@@ -151,9 +182,7 @@ def evaluate(data_path, agent,variant):
                         action_masks.append(action_mask)
 
                     # print(f"Step no: {step_no} | State: {observation_strings_w_history[-1]} | Prev command: {commands_per_step[i][-1]} | Question: {questions[q_no]} ")
-                    
-                    commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,list(range(step_no+1)),obs, padded_state_history, counting_rewards,model=model)
-                    
+                    commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,list(range(step_no+1)),obs, padded_state_history, rewards,model=model)
                     # print(f"Model: Action : {commands} | Answer {answer} | Question: {questions[q_no]}")
                     if "wait" in commands:
                         step_no = agent.eval_max_nb_steps_per_episode - 1
@@ -172,11 +201,12 @@ def evaluate(data_path, agent,variant):
                 observation_strings, possible_words = agent.get_game_info_at_certain_step(obs, infos)
                 observation_strings = [a + " <|> " + item for a, item in zip(commands, observation_strings)]
                 
+                reward_helper_info["observation_before_finish"] = agent.naozi.get()
+                sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_location_during(reward_helper_info)
                 state_strings = agent.get_state_strings(infos)
-                counting_rewards.append(agent.get_binarized_count(state_strings, update=True))
+                rewards.append(sufficient_info_reward_np)
 
-                counting_rewards[-1][0] = counting_rewards[-2][0] - counting_rewards[-1][0]
-
+                rewards[-1][0] = rewards[-2][0] - rewards[-1][0] if rewards[-1][0] > 0 else 0
                 if (step_no == agent.eval_max_nb_steps_per_episode - 1 ) or (step_no > 0 and np.sum(generic.to_np(replay_info[-1])) == 0):
                     break
 
@@ -233,12 +263,12 @@ def evaluate(data_path, agent,variant):
             r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
-        # print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
 
         env.close()
-
-    print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
-    return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)
+    if not agent.config["evaluate"]["silent"]:
+        print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+    
+    return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
 
 if (__name__ == "__main__"):
     agent = Agent()

@@ -148,7 +148,6 @@ class JsonDataset(Dataset):
 
                     (observations, state_mask), (actions, action_mask) = process_input(state=game_step["state"], question=episode["question"], command=" ".join([act,mod,obj]), sequence_length=self.sentence_length, word2id=word_encodings,pad_token=PAD_tag,tokenizer=self.tz)
                     trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : word_encodings[episode["answer"]]})
-                    
                     # If bert embeddings are used, add the masks to the trajectory.
                     if state_mask and action_mask:
                         trajectory.add({"state_mask" : state_mask, "action_mask" : action_mask,})
@@ -189,11 +188,11 @@ class Trainer:
 
         eval_start = time.time()
 
-        # self.model.eval()
-        # for eval_fn in self.eval_fns:
-        #     outputs = eval_fn(self.model)
-        #     for k, v in outputs.items():
-        #         logs[f'evaluation/{k}'] = v
+        self.model.eval()
+        for eval_fn in self.eval_fns:
+            outputs = eval_fn(self.model)
+            for k, v in outputs.items():
+                logs[f'evaluation/{k}'] = v
 
         logs['time/total'] = time.time() - self.start_time
         logs['time/evaluation'] = time.time() - eval_start

@@ -1,5 +1,6 @@
 import sys
 sys.path.insert(0, './decision_transformer')
+sys.path.append(".")
 
 import gym
 import numpy as np
@@ -17,6 +18,8 @@ from evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 from model_qait import DecisionTransformer
 from trainer_qait import JsonDataset, SequenceTrainer 
 
+import evaluate
+from agent import Agent
 
 def discount_cumsum(x, gamma):
     discount_cumsum = np.zeros_like(x)
@@ -164,47 +167,21 @@ def experiment(
         
         return s, a, r, rtg, timesteps, mask, ans, state_mask, action_mask
 
-    def eval_episodes(target_rew):
-        def fn(model):
-            returns, lengths = [], []
-            for _ in range(num_eval_episodes):
-                with torch.no_grad():
-                    if model_type == 'dt':
-                        ret, length = evaluate_episode_rtg(
-                            env,
-                            state_dim,
-                            act_dim,
-                            model,
-                            max_ep_len=max_ep_len,
-                            scale=scale,
-                            target_return=target_rew/scale,
-                            mode=mode,
-                            state_mean=state_mean,
-                            state_std=state_std,
-                            device=device,
-                        )
-                    else:
-                        ret, length = evaluate_episode(
-                            env,
-                            state_dim,
-                            act_dim,
-                            model,
-                            max_ep_len=max_ep_len,
-                            target_return=target_rew/scale,
-                            mode=mode,
-                            state_mean=state_mean,
-                            state_std=state_std,
-                            device=device,
-                        )
-                returns.append(ret)
-                lengths.append(length)
-            return {
-                f'target_{target_rew}_return_mean': np.mean(returns),
-                f'target_{target_rew}_return_std': np.std(returns),
-                f'target_{target_rew}_length_mean': np.mean(lengths),
-                f'target_{target_rew}_length_std': np.std(lengths),
+    def eval_episodes(model):
+        eval_qa_reward, eval_sufficient_info_reward = 0.0, 0.0
+        # evaluate
+        data_dir = "./"
+        agent = Agent()
+
+        variant = {"decision_transformer" : True}
+
+        eval_qa_reward, eval_sufficient_info_reward, eval_sufficient_info_reward_std = evaluate.evaluate(data_dir, agent, variant, model)
+
+        return {
+                "eval_qa_reward" : eval_qa_reward, 
+                "eval_sufficient_info_reward" : eval_sufficient_info_reward ,
+                "eval_sufficient_info_reward_std" : eval_sufficient_info_reward_std ,
             }
-        return fn
 
     if model_type == 'dt':
         model = DecisionTransformer(
@@ -246,7 +223,7 @@ def experiment(
             get_batch=get_batch,
             scheduler=scheduler,
             loss_fn=torch.nn.CrossEntropyLoss(),
-            eval_fns=[eval_episodes(tar) for tar in env_targets],
+            eval_fns=[eval_episodes],
         )
 
 
@@ -259,12 +236,12 @@ def experiment(
         )
         # wandb.watch(model)  # wandb has some bug
     print("========== Beginning Training ==========\n")
-    min_loss = float("inf")
+    best_sufficient_info_score = float("-inf")
     for iter in range(variant['max_iters']):
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True)
         
-        if outputs['training/train_loss_mean'] < min_loss:
-            min_loss = outputs['training/train_loss_mean']
+        if outputs['evaluation/eval_sufficient_info_reward'] > best_sufficient_info_score:
+            best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
             torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
         
         if log_to_wandb:

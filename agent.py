@@ -24,7 +24,6 @@ class Agent:
         self.mode = "train"
         with open("config.yaml") as reader:
             self.config = yaml.safe_load(reader)
-        print(self.config)
         self.load_config()
 
         self.online_net = DQN(config=self.config,
