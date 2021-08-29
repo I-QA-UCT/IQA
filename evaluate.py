@@ -53,7 +53,6 @@ def evaluate(data_path, agent, variant, model=None):
 
     if decision_transformer:
         # Loading in decision transformer for action prediction.
-        
         with open("decision_transformer/data/word_encodings.json") as word_encodings_data:
             word_encodings = json.load(word_encodings_data)
         
@@ -76,6 +75,13 @@ def evaluate(data_path, agent, variant, model=None):
             model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
         else:
             model.eval()
+
+        # Add model to cuda (if compatible)
+        device = "cuda" if agent.use_cuda else "cpu"
+        model = model.to(device=device)
+
+        # Create randon numpy number generator for sampling reward.
+        np_rng = np.random.RandomState(agent.config["general"]["random_seed"])  # can be called without a seed
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -147,7 +153,8 @@ def evaluate(data_path, agent, variant, model=None):
                 initial_reward = agent.config["evaluate"]['initial_reward']
             elif agent.config["evaluate"]['initial_reward'] == -1:    
                 # if agent.question_type == "location":
-                initial_reward = np.random.exponential(0.4)+1
+
+                initial_reward = np_rng.exponential(0.4)+1
             else:
                 raise NotImplementedError
 

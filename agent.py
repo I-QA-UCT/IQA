@@ -497,7 +497,9 @@ class Agent:
             chosen_indices = []
             chosen_strings = []
 
-            act, mod, obj, answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps, state_masks, action_masks)
+            device = "cuda" if self.use_cuda else "cpu"
+
+            act, mod, obj, answer = model.get_command(input_observations, commands_per_step, returns_to_go, timesteps, state_masks, action_masks, device=device)
             
             word_indices_dt = [act,mod,obj]
             chosen_indices.append(word_indices_dt)

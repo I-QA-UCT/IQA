@@ -183,18 +183,18 @@ class DecisionTransformer(nn.Module):
         return action_preds, modifier_preds, object_preds, answer_preds
 
 
-    def get_command(self, states, actions, returns_to_go, timesteps, state_mask, action_mask,**kwargs):
+    def get_command(self, states, actions, returns_to_go, timesteps, state_mask, action_mask, device="cpu",**kwargs):
 
         if state_mask and action_mask:
-            state_masks = torch.Tensor(state_mask).reshape(1, -1, self.state_dim).long()
-            action_masks = torch.Tensor(action_mask).reshape(1, -1, self.state_dim).long()
+            state_masks = torch.Tensor(state_mask).reshape(1, -1, self.state_dim).long().to(dtype=torch.long, device=device)
+            action_masks = torch.Tensor(action_mask).reshape(1, -1, self.state_dim).long().to(dtype=torch.long, device=device)
         else:
             state_masks = None
             action_masks = None
-        states = torch.Tensor(states).reshape(1, -1, self.state_dim).long()
-        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim).long()
-        returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1)
-        timesteps = torch.Tensor(timesteps).reshape(1, -1).long()
+        states = torch.Tensor(states).reshape(1, -1, self.state_dim).long().to(dtype=torch.long, device=device)
+        actions = torch.Tensor(actions).reshape(1, -1, self.act_dim).long().to(dtype=torch.long, device=device)
+        returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1).to(device=device)
+        timesteps = torch.Tensor(timesteps).reshape(1, -1).long().to(dtype=torch.long, device=device)
 
         # if self.max_length is not None:
         #     states = states[:,-self.max_length:]
