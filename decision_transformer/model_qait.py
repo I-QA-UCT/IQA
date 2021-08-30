@@ -26,6 +26,7 @@ class DecisionTransformer(nn.Module):
             answer_question = False,
             vocab_size = 1654,
             bert_embeddings = True,
+            question_type = "location",
             **kwargs
     ):
         super(DecisionTransformer,self).__init__()
@@ -66,14 +67,17 @@ class DecisionTransformer(nn.Module):
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
-        # if answer_question:
-        self.predict_answer = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)])
-        )
-        # else:
-        self.predict_action = nn.Sequential(
-            *([nn.Linear(hidden_size, self.vocab_size)])
-        )
+        # if answer_question: # Should we test scores if answer prediction didn't matter?
+        if question_type == "location":
+            self.predict_answer = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)])
+            )
+        elif question_type in ["existence", "attribute"]:
+            self.predict_action = nn.Sequential(
+                *([nn.Linear(hidden_size, 2)])
+            )
+        else:
+            raise NotImplementedError
 
         self.predict_modifer = nn.Sequential(
             *([nn.Linear(hidden_size, self.vocab_size)])
