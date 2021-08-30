@@ -51,7 +51,7 @@ def experiment(
     # else:
     #     raise NotImplementedError
     act_dim = 3 # act, mod, obj
-    state_dim = variant["sentence_tensor_length"] # Number of tokens in the state string
+    state_dim = variant["state_context_window"] # Number of tokens in the state string
 
     if bert_embeddings:
         act_dim += 7 # Make the action dimension 10 if bert is used
@@ -59,10 +59,10 @@ def experiment(
 
     import os
     # print("\n".join(os.listdir()))
-
+    question_type = variant["question_type"]
     # load dataset
     dataset_filename = f'{dataset}.json'
-    trajectories = JsonDataset(dataset_filename,state_dim,max_episodes=max_ep_len,use_bert=bert_embeddings)
+    trajectories = JsonDataset(dataset_filename,state_dim,max_episodes=max_ep_len,use_bert=bert_embeddings,question_type=question_type)
 
     # save all path information into separate lists
     mode = "normal"
@@ -254,6 +254,64 @@ def experiment(
     # with open(f"./decision_transformer/saved_models/{variant['env']}{qa}_config.pkl", "wb") as config:
     #     pickle.dump(variant, config)
 
+def qa_experiment(
+    exp_prefix,
+    variant
+):
+    device = variant.get('device', 'cuda') # cuda or cpu
+
+    log_to_wandb = variant.get('log_to_wandb', False)
+
+    env_name, dataset = variant['env'], variant['dataset']
+    model_type = variant['model_type']
+    group_name = f'{exp_prefix}-{env_name}-{dataset}'
+    exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
+
+    if log_to_wandb:
+        wandb.init(
+            name=exp_prefix,
+            group=group_name,
+            project='decision-transformer',
+            config=variant
+        )
+
+    model = QuestionAnsweringBert(
+        vocab_size=variant["vocab_size"],
+        hidden_size=variant["embed_dim"],
+        context_window=variant["state_context_window"],
+    )
+    
+    model = model.to(device=device)
+    
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=1e-4,
+        weight_decay=1e-4,
+    )
+    loss_fn = torch.nn.CrossEntropyLoss()
+    
+    trainer = QuestionAnsweringTrainer(
+        model,
+        optimizer,
+        loss_fn, 
+        batch_size=variant["batch_size"],
+        num_workers=variant["num_workers"],
+        data=variant["dataset"],
+    )
+    
+    epochs = variant['max_iters']
+
+    print("========== Beginning Training ==========\n")
+    max_accuracy = 0
+    for epoch in range(epochs):
+        outputs = trainer.train_iteration(iter_num=epoch+1, print_logs=True)
+        
+        if outputs['evaluation/QA_accuracy'] >= max_accuracy:
+            max_accuracy = logs['evaluation/QA_accuracy']
+            torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
+        
+        if log_to_wandb:
+            wandb.log(outputs)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -277,14 +335,21 @@ if __name__ == '__main__':
     parser.add_argument('--num_steps_per_iter', type=int, default=10)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--log_to_wandb', '-w', type=bool, default=True)
-    parser.add_argument('--sentence_tensor_length', '-sent', type=int, default=170)
+    parser.add_argument('--state_context_window', '-sent', type=int, default=170)
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
     parser.add_argument('--answer_question', '-qa', type=bool, default=False)
     parser.add_argument('--embed_type', type=str, default="normal")
     parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
     parser.add_argument('--eval_per_iter', type=int, default=100)
+    parser.add_argument('--num_workers', type=int, default=2)
+    parser.add_argument('--question_type', '-qt' ,type=str, default="location")
 
+    args = vars(parser.parse_args())
+    model_type = args["model_type"]
 
-    args = parser.parse_args()
-
-    experiment('iqa-experiment', variant=vars(args))
+    if model_type == "dt":
+        experiment('iqa-experiment', variant=args)
+    elif model_type == "qa":
+        experiment('iqa-experiment-qa', variant=args)
+    else:
+        raise NotImplementedError
