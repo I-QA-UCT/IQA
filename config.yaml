@@ -31,7 +31,7 @@ evaluate:
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: ''
+  experiment_tag: 'a2c_location_500_fixed'
   load_pretrained: True               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
@@ -62,11 +62,11 @@ double_dqn: False
 a2c:
   enable: True
   entropy_coefficient: 0.05
-  condition_commands : False  # use previous word in command triplet to calculate next word
+  condition_commands : True  # use previous word in command triplet to calculate next word
 
 # Intrinsic Curiosity Module Settings
 icm:
-  enable: True
+  enable: False
   beta: 0                     # proportion of inverse vs forward model loss: (1-beta)*inverse + beta*forward
   lambda: 1                   # weight of non-icm loss
   icm_loss_weight : 1         # weight of icm loss
@@ -74,8 +74,8 @@ icm:
   state_feature_size: 128     # if using feature net - size
   use_feature_net : False     # choice to use feature net or not
   inverse_action_weight: 1    # weight of inverse model action loss
-  inverse_modifier_weight: 0.1  # weight of inverse model modifier loss
-  inverse_object_weight: 0.1    # weight of inverse model object loss
+  inverse_modifier_weight: 0  # weight of inverse model modifier loss
+  inverse_object_weight: 0    # weight of inverse model object loss
   use_intrinsic_reward: False # use error as intrinsic motivation
   reward_scaling_factor: 0    # scale of error for reward
   inverse_reward: True        # use inverse models error as reward instead of forward model

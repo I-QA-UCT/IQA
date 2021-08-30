@@ -106,7 +106,7 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
 
             transition_cache = []
             if print_game:
-                print("Question: ",questions)
+                print("Question: ",questions,"Correct Answer: ",answers)
                 print("============================================================================")
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
@@ -148,6 +148,10 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
             chosen_word_indices_np = generic.to_np(chosen_word_indices)
             chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
             
+            if print_game:
+                print("Agent's Answer: ",chosen_answers)
+                print("============================================================================")
+
             if print_f1_score:
                 pred.append(chosen_answers[0])
                 truth.append(answers[0])
@@ -221,4 +225,4 @@ if (__name__ == "__main__"):
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
-    evaluate(agent=agent,data_path="./")
+    evaluate(agent=agent,data_path="./",print_game=True)
