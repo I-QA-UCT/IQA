@@ -507,7 +507,12 @@ class Agent:
             chosen_indices = torch.Tensor(chosen_indices).long()
             chosen_indices = torch.transpose(chosen_indices, 0, 1)
             chosen_strings = self.get_chosen_strings(chosen_indices)
-            chosen_answer = self.word_vocab[answer]
+
+            if self.question_type == "location":
+                chosen_answer = self.word_vocab[answer]
+            elif self.question_type in ["attribute", "existence"]:
+                chosen_answer = str(answer.detach().cpu().item())
+
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
                     self.not_finished_yet[i] = 0.0

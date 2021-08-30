@@ -71,8 +71,11 @@ def evaluate(data_path, agent, variant, model=None):
                 resid_pdrop=0.4,
                 attn_pdrop=0.4,
                 bert_embeddings=False,
+                question_type="location"
             )
             model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
+            model.question_type = agent.config["general"]["question_type"]
+
         else:
             model.eval()
 
@@ -227,7 +230,8 @@ def evaluate(data_path, agent, variant, model=None):
                 chosen_word_indices_np = generic.to_np(chosen_word_indices)
                 chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
             else:
-                chosen_answers = answer #agent.qa_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model_qa)
+
+                chosen_answers = [answer] #agent.qa_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model_qa)
 
             # rewards
             # qa reward

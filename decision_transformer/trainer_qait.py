@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
+from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringModule
 
 from transformers import BertTokenizer
 
@@ -81,10 +81,12 @@ def process_input(state, question, command, sequence_length, word2id, pad_token,
 
 class JsonDataset(Dataset):
 
-    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50, correct_traj_prop=0.7, use_bert=False):      
+    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50, correct_traj_prop=0.7, use_bert=False, question_type="location"):      
         self.sentence_length = sentence_length
         self.max_episodes = max_episodes
         
+        self.question_type = question_type
+
         self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
         self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
         
@@ -129,8 +131,14 @@ class JsonDataset(Dataset):
                 # the list is True from X-1 until {episode_max-1} 
                 completed_terminals = self.max_episodes - len(episode["steps"])
                 trajectory["terminals"] = [False]*len(episode["steps"]) + [True]*completed_terminals
-                # trajectory["total_reward"] = [round(episode["total_reward"],5)]
-                # trajectory["mask"] = episode["mask"]
+
+                if self.question_type in ["existence","attribute"]:
+                    answer = int(episode["answer"]) # If existence or attribute Q, make the answer a 0 or 1
+                elif self.question_type == "location":
+                    answer = word_encodings[episode["answer"]]
+                else:
+                    raise NotImplementedError
+
                 for game_step in episode["steps"]:
                     
                     # game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
@@ -147,7 +155,7 @@ class JsonDataset(Dataset):
                     reward = game_step["reward"]
 
                     (observations, state_mask), (actions, action_mask) = process_input(state=game_step["state"], question=episode["question"], command=" ".join([act,mod,obj]), sequence_length=self.sentence_length, word2id=word_encodings,pad_token=PAD_tag,tokenizer=self.tz)
-                    trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : word_encodings[episode["answer"]]})
+                    trajectory.add({"rewards" : reward, "observations" :  observations , "timesteps" : timestep, "actions" : actions,"answer" : answer})
                     # If bert embeddings are used, add the masks to the trajectory.
                     if state_mask and action_mask:
                         trajectory.add({"state_mask" : state_mask, "action_mask" : action_mask,})
@@ -232,26 +240,56 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
     
-    def __init__(self,data , tokenizer=None, context_window=180):
-        offline_rl_data_filename = RELATIVE_PATH + data
+    def __init__(self, data, context_window=180, question_type="location", model_type="bert"):
+        offline_rl_data_filename = RELATIVE_PATH + data + ".json"
         word_encodings_filename = WORD_ENCODINGS
-        bert_tokenizer = tokenizer
+
+        self.question_type = question_type
+        self.context_window = context_window
+
         with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
             word_encodings = json.load(word_encodings_data)
             self.vocab_size = len(word_encodings)
 
+
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
-                episode = json.loads(fix_text(sample_entry))
+                episode = json.loads(sample_entry)
+                
+                if self.question_type in ["existence","attribute"]:
+                    answer = int(episode["answer"]) # If existence or attribute Q, make the answer a 0 or 1
+                elif self.question_type == "location":
+                    answer = word_encodings[episode["answer"]]
+                else:
+                    raise NotImplementedError
+                
+
+                if model_type == "bert":
+                    # This algorithm appends each state string to a deque starting from the
+                    # last state observed to the first state observed. The aim of such a function
+                    # is to create a context string combining the last state observed with the maximum
+                    # amount of previous state strings that the context_window allows for. 
+                    cleaned_states = deque()
+                    for game_step in reversed(episode["steps"]):
+                        cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                        if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                            cleaned_states.extendleft(cleaned_state)
+                        else:
+                            cleaned_states.extendleft([cleaned_state[-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9):]])
+
+                    text_prompt = "[CLS] "+ episode["question"] + " [SEP] " + " ".join(cleaned_state) + "[SEP]"
                     
-                game_step = episode["steps"][-2]
-                cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","[SEP]").replace("<pad>","").split() # <|> -> [SEP]/ ""
-                
-                text_prompt = "[CLS] "+ " ".join(cleaned_state) + " [SEP] " +  episode["question"] + "[SEP]"
-                
-                self.dataset.append((text_prompt, word_encodings[episode["answer"]]))
+                    self.dataset.append((text_prompt, answer))
+                elif model_type == "longformer":
+                    cleaned_states = []
+                    for game_step in episode["steps"]:
+                        cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
+                        cleaned_states.append(" ".join(cleaned_state.split()))
+                    
+                    self.dataset.append(( "<s>"+" ".join(cleaned_states)+"</s></s> "+ episode["question"] + " </s>", answer))
+
 
     def __len__(self):
         return len(self.dataset)
@@ -265,11 +303,11 @@ class QuestionAnsweringTrainer(Trainer):
     def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
-        dataset = QuestionAnsweringDataLoader(data, model.tokenizer,model.context_window)
+        dataset = QuestionAnsweringDataLoader(data, model.context_window, model.question_type, model.pretrained_model)
         train_size = round(len(dataset)*0.8)
         eval_size = len(dataset) - train_size
         self.train_subset, self.val_subset = torch.utils.data.random_split(
-                dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(42))
+                dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(model.context_window))
         
         self.dataloader = DataLoader(dataset=self.train_subset, shuffle=True, batch_size=batch_size)
         self.val_loader = DataLoader(dataset=self.val_subset, shuffle=False, batch_size=batch_size)
@@ -349,6 +387,8 @@ class SequenceTrainer(Trainer):
         states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, state_mask, action_mask = self.get_batch(self.batch_size)
 
         vocab_size = self.model.vocab_size
+        
+        answer_vocab_size = vocab_size if self.model.question_type == "location" else 2 # Attribute or existence
 
         command_target = torch.clone(actions)
         action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
@@ -356,7 +396,7 @@ class SequenceTrainer(Trainer):
         action_preds, modifier_preds, object_preds, answer_preds = self.model.forward(
         states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask, state_mask=state_mask, action_mask=action_mask)
         
-        answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        answer_preds = answer_preds.reshape(-1, answer_vocab_size)[attention_mask.reshape(-1) > 0]
         answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
 
         action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
@@ -393,31 +433,4 @@ if __name__ == "__main__":
 
     args = vars(parser.parse_args())
 
-    model = QuestionAnsweringBert(vocab_size=1654)
-    if torch.cuda.is_available():
-        model = model.cuda()
     
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=1e-4,
-        weight_decay=1e-4,
-    )
-    loss_fn = torch.nn.CrossEntropyLoss()
-    
-    trainer = QuestionAnsweringTrainer(
-        model,
-        optimizer,
-        loss_fn, 
-        batch_size=args["batch_size"],
-        num_workers=args["num_workers"],
-        data=args["data"],
-    )
-    
-    epochs = args['max_iters']
-
-    max_accuracy = 0
-    for epoch in range(epochs):
-        logs = trainer.train_iteration(iter_num=epoch, print_logs=True)
-        if logs['training/QA_accuracy'] >= max_accuracy:
-            max_accuracy = logs['training/QA_accuracy']
-            torch.save(model,f"{args['directory']}/{args['env']}.pt")
