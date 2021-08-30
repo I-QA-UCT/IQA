@@ -40,6 +40,7 @@ class DecisionTransformer(nn.Module):
         self.max_length = max_length
 
         self.answer_question = answer_question
+        self.question_type = question_type
 
         self.bert_embeddings = bert_embeddings
 
@@ -68,17 +69,21 @@ class DecisionTransformer(nn.Module):
         self.embed_ln = nn.LayerNorm(hidden_size)
         
         # if answer_question: # Should we test scores if answer prediction didn't matter?
-        if question_type == "location":
+        if self.question_type == "location":
             self.predict_answer = nn.Sequential(
                 *([nn.Linear(hidden_size, self.vocab_size)])
             )
-        elif question_type in ["existence", "attribute"]:
-            self.predict_action = nn.Sequential(
+        elif self.question_type in ["existence", "attribute"]:
+            self.predict_answer = nn.Sequential(
                 *([nn.Linear(hidden_size, 2)])
             )
         else:
             raise NotImplementedError
-
+        
+        self.predict_action = nn.Sequential(
+                *([nn.Linear(hidden_size, self.vocab_size)])
+            )
+        
         self.predict_modifer = nn.Sequential(
             *([nn.Linear(hidden_size, self.vocab_size)])
         )
@@ -229,13 +234,17 @@ class DecisionTransformer(nn.Module):
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, device=device, **kwargs)
 
-        softmax = nn.Softmax(dim=0)
-        action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
-        modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[-1,-1]))
-        object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[-1,-1]))
-        # answer_dist = torch.distributions.categorical.Categorical(softmax(answer_pred[0,-1]))
+        if self.question_type == "location":
 
-        return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
+            softmax = nn.Softmax(dim=0)
+            action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
+            modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[-1,-1]))
+            object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[-1,-1]))
+
+            return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
+        
+        elif self.question_type in ["existence", "attribute"]:
+            return  torch.argmax(action_preds[-1,-1]), torch.argmax(modifier_preds[-1,-1]), torch.argmax(object_preds[-1,-1]), torch.argmax(answer_pred[-1,-1])
 
 class QuestionAnsweringBert(nn.Module):
     def __init__(self, vocab_size, hidden_size=64, context_window=200):

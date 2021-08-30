@@ -378,6 +378,8 @@ class SequenceTrainer(Trainer):
         states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, state_mask, action_mask = self.get_batch(self.batch_size)
 
         vocab_size = self.model.vocab_size
+        
+        answer_vocab_size = vocab_size if self.model.question_type == "location" else 2 # Attribute or existence
 
         command_target = torch.clone(actions)
         action_target,modifier_target,object_target = [command_target[:,:,i] for i in range(3)]
@@ -385,7 +387,7 @@ class SequenceTrainer(Trainer):
         action_preds, modifier_preds, object_preds, answer_preds = self.model.forward(
         states, actions, rewards, rtg[:,:-1], timesteps, attention_mask=attention_mask, state_mask=state_mask, action_mask=action_mask)
         
-        answer_preds = answer_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
+        answer_preds = answer_preds.reshape(-1, answer_vocab_size)[attention_mask.reshape(-1) > 0]
         answer_targets = answer_targets.reshape(-1)[attention_mask.reshape(-1) > 0]
 
         action_preds = action_preds.reshape(-1, vocab_size)[attention_mask.reshape(-1) > 0]
