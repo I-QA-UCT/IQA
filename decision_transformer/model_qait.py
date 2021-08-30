@@ -295,7 +295,7 @@ class QuestionAnsweringModule(nn.Module):
         """
 
 
-        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
+        encoding = self.tokenizer(prompt_questions, truncation=True,padding='max_length',return_tensors='pt')
 
         output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
                     attention_mask=encoding['attention_mask'].to(device=self.device))
