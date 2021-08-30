@@ -265,9 +265,19 @@ class QuestionAnsweringDataLoader(Dataset):
                 else:
                     raise NotImplementedError
                 
-                game_step = episode["steps"][-1]
-                cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split() # <|> -> [SEP]/ ""
-                
+
+                # This algorithm appends each state string to a deque starting from the
+                # last state observed to the first state observed. The aim of such a function
+                # is to create a context string combining the last state observed with the maximum
+                # amount of previous state strings that the context_window allows for. 
+                cleaned_states = deque()
+                for game_step in reversed(episode["steps"]):
+                    cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                    if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                        cleaned_states.extendleft(cleaned_state)
+                    else:
+                        cleaned_states.extendleft([cleaned_state[-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9):]])
+
                 text_prompt = "[CLS] "+ " ".join(cleaned_state) + " [SEP] " +  episode["question"] + "[SEP]"
                 
                 self.dataset.append((text_prompt, answer))
