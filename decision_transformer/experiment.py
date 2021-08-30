@@ -15,8 +15,8 @@ import random
 import sys
 
 from evaluate_episodes import evaluate_episode, evaluate_episode_rtg
-from model_qait import DecisionTransformer
-from trainer_qait import JsonDataset, SequenceTrainer 
+from model_qait import DecisionTransformer, QuestionAnsweringModule
+from trainer_qait import JsonDataset, SequenceTrainer, QuestionAnsweringTrainer
 
 import evaluate
 from agent import Agent
@@ -198,6 +198,7 @@ def experiment(
             resid_pdrop=variant['dropout'],
             attn_pdrop=variant['dropout'],
             bert_embeddings= bert_embeddings,
+            question_type=question_type,
         )
     else:
         raise NotImplementedError
@@ -263,7 +264,7 @@ def qa_experiment(
     log_to_wandb = variant.get('log_to_wandb', False)
 
     env_name, dataset = variant['env'], variant['dataset']
-    model_type = variant['model_type']
+    model_type = variant['pretrained_model']
     group_name = f'{exp_prefix}-{env_name}-{dataset}'
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
 
@@ -275,10 +276,15 @@ def qa_experiment(
             config=variant
         )
 
-    model = QuestionAnsweringBert(
+    model = QuestionAnsweringModule(
         vocab_size=variant["vocab_size"],
         hidden_size=variant["embed_dim"],
+        pretrained_model=variant["pretrained_model"],
         context_window=variant["state_context_window"],
+        attention_probs_dropout_prob=variant["dropout"],
+        hidden_dropout_prob=variant["dropout"],
+        question_type=variant["question_type"],
+
     )
     
     model = model.to(device=device)
@@ -307,7 +313,7 @@ def qa_experiment(
         outputs = trainer.train_iteration(iter_num=epoch+1, print_logs=True)
         
         if outputs['evaluation/QA_accuracy'] >= max_accuracy:
-            max_accuracy = logs['evaluation/QA_accuracy']
+            max_accuracy = outputs['evaluation/QA_accuracy']
             torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
         
         if log_to_wandb:
@@ -334,15 +340,17 @@ if __name__ == '__main__':
     parser.add_argument('--max_iters', type=int, default=100)
     parser.add_argument('--num_steps_per_iter', type=int, default=10)
     parser.add_argument('--device', type=str, default='cpu')
-    parser.add_argument('--log_to_wandb', '-w', type=bool, default=True)
-    parser.add_argument('--state_context_window', '-sent', type=int, default=170)
+    parser.add_argument('--log_to_wandb', '-w', type=bool)
+    parser.add_argument('--state_context_window', '-state', type=int, default=170)
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
     parser.add_argument('--answer_question', '-qa', type=bool, default=False)
     parser.add_argument('--embed_type', type=str, default="normal")
     parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
-    parser.add_argument('--eval_per_iter', type=int, default=100)
+    parser.add_argument('--eval_per_iter', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
+    parser.add_argument('--pretrained_model' ,type=str, default="longformer")
+
 
     args = vars(parser.parse_args())
     model_type = args["model_type"]
@@ -350,6 +358,6 @@ if __name__ == '__main__':
     if model_type == "dt":
         experiment('iqa-experiment', variant=args)
     elif model_type == "qa":
-        experiment('iqa-experiment-qa', variant=args)
+        qa_experiment('iqa-experiment-qa', variant=args)
     else:
         raise NotImplementedError

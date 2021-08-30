@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringBert
+from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringModule
 
 from transformers import BertTokenizer
 
@@ -240,8 +240,8 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
     
-    def __init__(self, data, context_window=180, question_type="location"):
-        offline_rl_data_filename = RELATIVE_PATH + data
+    def __init__(self, data, context_window=180, question_type="location", model_type="bert"):
+        offline_rl_data_filename = RELATIVE_PATH + data + ".json"
         word_encodings_filename = WORD_ENCODINGS
 
         self.question_type = question_type
@@ -266,21 +266,30 @@ class QuestionAnsweringDataLoader(Dataset):
                     raise NotImplementedError
                 
 
-                # This algorithm appends each state string to a deque starting from the
-                # last state observed to the first state observed. The aim of such a function
-                # is to create a context string combining the last state observed with the maximum
-                # amount of previous state strings that the context_window allows for. 
-                cleaned_states = deque()
-                for game_step in reversed(episode["steps"]):
-                    cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
-                    if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
-                        cleaned_states.extendleft(cleaned_state)
-                    else:
-                        cleaned_states.extendleft([cleaned_state[-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9):]])
+                if model_type == "bert":
+                    # This algorithm appends each state string to a deque starting from the
+                    # last state observed to the first state observed. The aim of such a function
+                    # is to create a context string combining the last state observed with the maximum
+                    # amount of previous state strings that the context_window allows for. 
+                    cleaned_states = deque()
+                    for game_step in reversed(episode["steps"]):
+                        cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                        if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                            cleaned_states.extendleft(cleaned_state)
+                        else:
+                            cleaned_states.extendleft([cleaned_state[-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9):]])
 
-                text_prompt = "[CLS] "+ " ".join(cleaned_state) + " [SEP] " +  episode["question"] + "[SEP]"
-                
-                self.dataset.append((text_prompt, answer))
+                    text_prompt = "[CLS] "+ episode["question"] + " [SEP] " + " ".join(cleaned_state) + "[SEP]"
+                    
+                    self.dataset.append((text_prompt, answer))
+                elif model_type == "longformer":
+                    cleaned_states = []
+                    for game_step in episode["steps"]:
+                        cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
+                        cleaned_states.append(" ".join(cleaned_state.split()))
+                    
+                    self.dataset.append(( "<s>"+" ".join(cleaned_states)+"</s></s> "+ episode["question"] + " </s>", answer))
+
 
     def __len__(self):
         return len(self.dataset)
@@ -294,7 +303,7 @@ class QuestionAnsweringTrainer(Trainer):
     def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
-        dataset = QuestionAnsweringDataLoader(data, model.context_window, model.question_type)
+        dataset = QuestionAnsweringDataLoader(data, model.context_window, model.question_type, model.pretrained_model)
         train_size = round(len(dataset)*0.8)
         eval_size = len(dataset) - train_size
         self.train_subset, self.val_subset = torch.utils.data.random_split(

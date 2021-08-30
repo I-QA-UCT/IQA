@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizerFast, BertModel
+from transformers import BertTokenizerFast, BertModel, LongformerModel, LongformerTokenizerFast
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -246,14 +246,40 @@ class DecisionTransformer(nn.Module):
         elif self.question_type in ["existence", "attribute"]:
             return  torch.argmax(action_preds[-1,-1]), torch.argmax(modifier_preds[-1,-1]), torch.argmax(object_preds[-1,-1]), torch.argmax(answer_pred[-1,-1])
 
-class QuestionAnsweringBert(nn.Module):
-    def __init__(self, vocab_size, hidden_size=64, context_window=200):
-        super(QuestionAnsweringBert,self).__init__()
+class QuestionAnsweringModule(nn.Module):
+    def __init__(
+        self, 
+        vocab_size, 
+        hidden_size=64,
+        pretrained_model='bert-large-uncased', 
+        context_window=200,
+        question_type="location", 
+        **kwargs,
+    ):
+        super(QuestionAnsweringModule,self).__init__()
+        
+        self.pretrained_model = pretrained_model
+        self.context_window = context_window
+        self.question_type = question_type
 
-        # self.bert_encoder = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True)
-        self.bert = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+        if self.pretrained_model == "bert":
+            self.model = BertModel.from_pretrained('bert-large-uncased', output_hidden_states=True, **kwargs)
+            self.tokenizer = BertTokenizerFast.from_pretrained('bert-large-uncased', max_length = self.context_window)
 
-        self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
+        elif self.pretrained_model == "longformer":
+
+            self.model = LongformerModel.from_pretrained(
+                'allenai/longformer-base-4096', 
+                output_hidden_states=True, 
+                gradient_checkpointing=False,
+                attention_window = context_window,
+                max_length = 4096,
+                num_labels=vocab_size,
+                **kwargs,
+            )
+            
+            self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096', max_length = self.context_window)
+
         self.hidden_size = hidden_size
 
         self.context_window = context_window
@@ -261,20 +287,20 @@ class QuestionAnsweringBert(nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # self.lstm = nn.LSTM(self.bert.config.hidden_size, self.hidden_size, 1)
-        self.out = nn.Linear(self.bert.config.hidden_size, self.vocab_size)
+        self.out = nn.Linear(self.model.config.hidden_size, self.vocab_size)
     
     def forward(self, prompt_questions):
         """
         
         """
 
+
         encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')
 
-        output = self.bert(input_ids=encoding['input_ids'].to(device=self.device),
+        output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
                     attention_mask=encoding['attention_mask'].to(device=self.device))
 
         # bert_out = self.bert(inputs_embeds=output["pooler_output"].unsqueeze(0).to(device=self.device))
-        
         return self.out(output["pooler_output"].to(device=self.device))
 
 class Trajectory(object):
