@@ -327,7 +327,7 @@ class QuestionAnsweringTrainer(Trainer):
 
             questions, prompts, answers = batch
 
-            output = self.model.forward([[q,p] for q,p in zip(questions,prompts)])
+            output = self.model.forward([p +" "+ q for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()
@@ -361,7 +361,7 @@ class QuestionAnsweringTrainer(Trainer):
         for batch in self.val_loader:
 
             questions, prompts, answers = batch
-            output = self.model.forward([[q,p] for q,p in zip(questions,prompts)])
+            output = self.model.forward([p +" "+ q for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 

@@ -289,7 +289,11 @@ def qa_experiment(
     
     model = model.to(device=device)
     
-    optimizer = torch.optim.SGD(model.parameters(), lr=variant["learning_rate"])
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=variant['learning_rate'],
+        weight_decay=variant['weight_decay'],
+    )
     
     loss_fn = torch.nn.CrossEntropyLoss()
     
