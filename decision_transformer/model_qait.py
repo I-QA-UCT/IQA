@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizerFast, BertModel, LongformerModel, LongformerTokenizerFast
+from transformers import BertTokenizerFast, BertModel
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -263,8 +263,8 @@ class QuestionAnsweringModule(nn.Module):
         self.question_type = question_type
 
         if self.pretrained_model == "bert":
-            self.model = BertModel.from_pretrained('bert-large-uncased', output_hidden_states=True, **kwargs)
-            self.tokenizer = BertTokenizerFast.from_pretrained('bert-large-uncased', max_length = self.context_window)
+            self.model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True, **kwargs)
+            self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased', max_length = self.context_window)
 
         elif self.pretrained_model == "longformer":
             max_length = 4096

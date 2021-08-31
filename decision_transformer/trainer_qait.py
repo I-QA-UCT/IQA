@@ -280,9 +280,9 @@ class QuestionAnsweringDataLoader(Dataset):
                             cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
                             break
 
-                    text_prompt = episode["question"] + " [SEP] " + " ".join(cleaned_states)
+                    text_prompt = " ".join(cleaned_states)
                     
-                    self.dataset.append((text_prompt, answer))
+                    self.dataset.append((episode["question"], text_prompt, answer))
                 elif model_type == "longformer":
                     cleaned_states = []
                     for game_step in episode["steps"]:
@@ -295,7 +295,7 @@ class QuestionAnsweringDataLoader(Dataset):
                         while len(cleaned_states) > 4050:
                             cleaned_states.pop((len(cleaned_states)-1)//2)
 
-                    self.dataset.append((episode["question"] +"</s></s>" +" ".join(cleaned_states), answer))
+                    self.dataset.append((episode["question"] ," ".join(cleaned_states), answer))
 
 
     def __len__(self):
@@ -325,16 +325,15 @@ class QuestionAnsweringTrainer(Trainer):
         hits = 0
         for batch in self.dataloader:
 
-            prompt_question, answers = batch
+            questions, prompts, answers = batch
 
-            output = self.model.forward([pq for pq in prompt_question])
+            output = self.model.forward([[q,p] for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
-
             total_losses.append(loss.detach().cpu().item()) 
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
         return total_losses, hits.cpu().item()/len(self.train_subset)
