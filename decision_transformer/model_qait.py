@@ -264,7 +264,7 @@ class QuestionAnsweringModule(nn.Module):
 
         if self.pretrained_model == "bert":
             self.model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True, **kwargs)
-            self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased', max_length = self.context_window)
+            self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
 
         elif self.pretrained_model == "longformer":
             max_length = 4096
@@ -293,7 +293,7 @@ class QuestionAnsweringModule(nn.Module):
 
         """
 
-        encoding = self.tokenizer(prompt_questions, truncation=True,padding='max_length',return_tensors='pt')        
+        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')        
         output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
                 attention_mask=encoding['attention_mask'].to(device=self.device))
 
