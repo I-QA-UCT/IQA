@@ -383,18 +383,22 @@ def train(data_path):
             continue
         eval_qa_reward, eval_sufficient_info_reward = 0.0, 0.0
         # evaluate
-        if episode_no <= 20:
+        if episode_no <= 25000:
+            suffix = "25k"
+        elif episode_no <= 50000:
             suffix = "50k"
-            print("_50K")
-        elif episode_no <= 40:
+        elif episode_no <= 75000:
+            suffix = "75k"
+        elif episode_no <= 100000:
             suffix = "100k"
-            print("_100K")
-        elif episode_no <= 60:
+        elif episode_no <= 125000:
+            suffix = "125k"
+        elif episode_no <= 150000:
             suffix = "150k"
-            print("_150K")
-        elif episode_no <= 80:
+        elif episode_no <= 175000:
+            suffix = "175k"
+        elif episode_no <= 200000:
             suffix = "200k"
-            print("_200K")
         else:
             suffix = ""
 

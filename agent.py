@@ -51,6 +51,16 @@ class Agent:
 
         params = self.config['gat']
         self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
+        bert_size = self.config['gat']['bert_size']
+        if bert_size == 'tiny':
+            self.bert_size_int = 128
+        elif bert_size == 'mini':
+            self.bert_size_int = 256
+        elif bert_size == 'base':
+            self.bert_size_int = 768
+        else:
+            self.bert_size_int = 512 #Small or medium
+            
         # params['vocab_size'] = len(self.state.vocab)
         # params['use_cuda'] = self.config['general']['use_cuda']
 
@@ -605,7 +615,8 @@ class Agent:
                 # node_embedding= node_embedding.mean(dim=0) 
                 # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
-
+            if len(self.embeds) == 0:
+                self.embeds = [torch.zeros(self.bert_size_int)]
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
@@ -619,7 +630,8 @@ class Agent:
                 # node_embedding= node_embedding.mean(dim=0)
                 # next_embeds.append(node_embedding)
                 next_embeds.append(self.state.bert_lookup[i])
-
+            if len(self.next_embeds) == 0:
+                self.next_embeds = [torch.zeros(self.bert_size_int)]
             next_data = Data(x=torch.stack(next_embeds), edge_index=next_edge_index).to(self.device)
             next_kg_info_data.append(next_data)
 
@@ -824,6 +836,8 @@ class Agent:
                 # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
 
+            if len(self.embeds) == 0:
+                self.embeds = [torch.zeros(self.bert_size_int)]
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
