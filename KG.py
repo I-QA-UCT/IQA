@@ -272,7 +272,7 @@ class SupplementaryKG(object):
         self.state_ent_emb_bert()
 
         if len(self.embeds) == 0:
-            self.embeds = [torch.zeros(self.bert_size_int)]
+            self.embeds = [torch.zeros(self.bert_size_int, device = self.device)]
         data = Data(x=torch.stack(self.embeds), edge_index=edge_index).to(self.device)
 
         return data

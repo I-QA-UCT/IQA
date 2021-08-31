@@ -615,8 +615,8 @@ class Agent:
                 # node_embedding= node_embedding.mean(dim=0) 
                 # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
-            if len(self.embeds) == 0:
-                self.embeds = [torch.zeros(self.bert_size_int)]
+            if len(embeds) == 0:
+                embeds = [torch.zeros(self.bert_size_int, device = self.device)]
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
@@ -630,8 +630,8 @@ class Agent:
                 # node_embedding= node_embedding.mean(dim=0)
                 # next_embeds.append(node_embedding)
                 next_embeds.append(self.state.bert_lookup[i])
-            if len(self.next_embeds) == 0:
-                self.next_embeds = [torch.zeros(self.bert_size_int)]
+            if len(next_embeds) == 0:
+                next_embeds = [torch.zeros(self.bert_size_int, device = self.device)]
             next_data = Data(x=torch.stack(next_embeds), edge_index=next_edge_index).to(self.device)
             next_kg_info_data.append(next_data)
 
@@ -836,8 +836,8 @@ class Agent:
                 # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
 
-            if len(self.embeds) == 0:
-                self.embeds = [torch.zeros(self.bert_size_int)]
+            if len(embeds) == 0:
+                embeds = [torch.zeros(self.bert_size_int, device = self.device)]
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
