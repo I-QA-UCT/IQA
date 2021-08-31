@@ -360,8 +360,8 @@ class QuestionAnsweringTrainer(Trainer):
         hits = 0
         for batch in self.val_loader:
 
-            prompt_question, answers = batch
-            output = self.model.forward([pq for pq in prompt_question])
+            questions, prompts, answers = batch
+            output = self.model.forward([[q,p] for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 
