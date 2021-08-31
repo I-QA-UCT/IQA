@@ -225,4 +225,4 @@ if (__name__ == "__main__"):
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
-    evaluate(agent=agent,data_path="./",print_game=True)
+    evaluate(agent=agent,data_path="./")
