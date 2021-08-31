@@ -38,6 +38,15 @@ class SupplementaryKG(object):
         self.embeds = []
         self.bert_lookup = {}
 
+        if bert_size == 'tiny':
+            self.bert_size_int = 128
+        elif bert_size == 'mini':
+            self.bert_size_int = 256
+        elif bert_size == 'base':
+            self.bert_size_int = 768
+        else:
+            self.bert_size_int = 512 #Small or medium
+
         self.port = port
 
     def load_files(self):
@@ -262,6 +271,8 @@ class SupplementaryKG(object):
 
         self.state_ent_emb_bert()
 
+        if len(self.embeds) == 0:
+            self.embeds = [torch.zeros(self.bert_size_int)]
         data = Data(x=torch.stack(self.embeds), edge_index=edge_index).to(self.device)
 
         return data
