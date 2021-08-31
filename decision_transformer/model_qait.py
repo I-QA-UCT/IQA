@@ -267,18 +267,17 @@ class QuestionAnsweringModule(nn.Module):
             self.tokenizer = BertTokenizerFast.from_pretrained('bert-large-uncased', max_length = self.context_window)
 
         elif self.pretrained_model == "longformer":
-
+            max_length = 4096
             self.model = LongformerModel.from_pretrained(
                 'allenai/longformer-base-4096', 
                 output_hidden_states=True, 
-                gradient_checkpointing=False,
                 attention_window = context_window,
-                max_length = 4096,
+                max_length = max_length,
                 num_labels=vocab_size,
                 **kwargs,
             )
             
-            self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096', max_length = model.max_length, **kwargs)
+            self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096', max_length = max_length, **kwargs)
 
         self.hidden_size = hidden_size
 
@@ -294,12 +293,10 @@ class QuestionAnsweringModule(nn.Module):
 
         """
 
-        encoding = self.tokenizer(prompt_questions, truncation=True,padding='max_length',return_tensors='pt')
-
+        encoding = self.tokenizer(prompt_questions, truncation=True,padding='max_length',return_tensors='pt')        
         output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
-                    attention_mask=encoding['attention_mask'].to(device=self.device))
+                attention_mask=encoding['attention_mask'].to(device=self.device))
 
-        # bert_out = self.bert(inputs_embeds=output["pooler_output"].unsqueeze(0).to(device=self.device))
         return self.out(output["pooler_output"].to(device=self.device))
 
 class Trajectory(object):

@@ -275,11 +275,12 @@ class QuestionAnsweringDataLoader(Dataset):
                     for game_step in reversed(episode["steps"]):
                         cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
                         if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
-                            cleaned_states.extendleft(cleaned_state)
+                            cleaned_states.extendleft(reversed(cleaned_state))
                         else:
-                            cleaned_states.extendleft([cleaned_state[-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9):]])
+                            cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
+                            break
 
-                    text_prompt = "[CLS] "+ episode["question"] + " [SEP] " + " ".join(cleaned_state) + "[SEP]"
+                    text_prompt = episode["question"] + " [SEP] " + " ".join(cleaned_states)
                     
                     self.dataset.append((text_prompt, answer))
                 elif model_type == "longformer":
@@ -287,8 +288,8 @@ class QuestionAnsweringDataLoader(Dataset):
                     for game_step in episode["steps"]:
                         cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
                         cleaned_states.append(" ".join(cleaned_state.split()))
-                    
-                    self.dataset.append(( "<s>"+" ".join(cleaned_states)+"</s></s> "+ episode["question"] + " </s>", answer))
+
+                    self.dataset.append((episode["question"] +"</s></s>" +" ".join(cleaned_states), answer))
 
 
     def __len__(self):
@@ -330,7 +331,7 @@ class QuestionAnsweringTrainer(Trainer):
 
             total_losses.append(loss.detach().cpu().item()) 
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
-
+            print(torch.argmax(output,dim=1),answers_tensor,hits)
         return total_losses, hits.cpu().item()/len(self.train_subset)
 
 
