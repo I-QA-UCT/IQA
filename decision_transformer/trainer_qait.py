@@ -288,6 +288,12 @@ class QuestionAnsweringDataLoader(Dataset):
                     for game_step in episode["steps"]:
                         cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
                         cleaned_states.append(" ".join(cleaned_state.split()))
+                    
+                    # If the number of tokens is greater than 4050 then pop from the middle
+                    # until the no. of states is less than or equal to 4050.
+                    if len(cleaned_states) > 4050:
+                        while len(cleaned_states) > 4050:
+                            cleaned_states.pop((len(cleaned_states)-1)//2)
 
                     self.dataset.append((episode["question"] +"</s></s>" +" ".join(cleaned_states), answer))
 
@@ -331,7 +337,6 @@ class QuestionAnsweringTrainer(Trainer):
 
             total_losses.append(loss.detach().cpu().item()) 
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
-            print(torch.argmax(output,dim=1),answers_tensor,hits)
         return total_losses, hits.cpu().item()/len(self.train_subset)
 
 
