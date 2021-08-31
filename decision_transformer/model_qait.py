@@ -278,7 +278,7 @@ class QuestionAnsweringModule(nn.Module):
                 **kwargs,
             )
             
-            self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096', max_length = self.context_window)
+            self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-base-4096', max_length = model.max_length, **kwargs)
 
         self.hidden_size = hidden_size
 
@@ -291,9 +291,8 @@ class QuestionAnsweringModule(nn.Module):
     
     def forward(self, prompt_questions):
         """
-        
-        """
 
+        """
 
         encoding = self.tokenizer(prompt_questions, truncation=True,padding='max_length',return_tensors='pt')
 

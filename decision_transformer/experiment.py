@@ -289,11 +289,8 @@ def qa_experiment(
     
     model = model.to(device=device)
     
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=1e-4,
-        weight_decay=1e-4,
-    )
+    optimizer = optim.SGD(model.parameters(), lr=variant["learning_rate"])
+    
     loss_fn = torch.nn.CrossEntropyLoss()
     
     trainer = QuestionAnsweringTrainer(
@@ -303,6 +300,7 @@ def qa_experiment(
         batch_size=variant["batch_size"],
         num_workers=variant["num_workers"],
         data=variant["dataset"],
+        gradient_checkpointing=True,
     )
     
     epochs = variant['max_iters']
