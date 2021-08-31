@@ -284,7 +284,7 @@ def qa_experiment(
         attention_probs_dropout_prob=variant["dropout"],
         hidden_dropout_prob=variant["dropout"],
         question_type=variant["question_type"],
-
+        gradient_checkpointing=True,
     )
     
     model = model.to(device=device)
@@ -300,7 +300,6 @@ def qa_experiment(
         batch_size=variant["batch_size"],
         num_workers=variant["num_workers"],
         data=variant["dataset"],
-        gradient_checkpointing=True,
     )
     
     epochs = variant['max_iters']
