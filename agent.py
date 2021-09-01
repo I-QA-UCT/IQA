@@ -34,10 +34,12 @@ class Agent:
         self.online_net = DQN(config=self.config,
                               word_vocab=self.word_vocab,
                               char_vocab=self.char_vocab,
+                              device=self.device,
                               answer_type=self.answer_type)
         self.target_net = DQN(config=self.config,
                               word_vocab=self.word_vocab,
                               char_vocab=self.char_vocab,
+                              device=self.device,
                               answer_type=self.answer_type)
         self.online_net.train()
         self.target_net.train()
@@ -49,7 +51,7 @@ class Agent:
             self.online_net.cuda()
             self.target_net.cuda()
 
-        params = self.config['gat']
+        # params = self.config['gat']
         self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
         bert_size = self.config['gat']['bert_size']
         if bert_size == 'tiny':
@@ -65,12 +67,12 @@ class Agent:
         # params['use_cuda'] = self.config['general']['use_cuda']
 
         # self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
+        # self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
         # self.bert = BertEmbedder(self.config['gat']['bert_size'], [], self.device)
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
-        self.optimizer = torch.optim.Adam(list(self.online_net.parameters())+list(self.GAT.parameters()), lr=self.config['training']['optimizer']['learning_rate'])
+        self.optimizer = torch.optim.Adam(self.online_net.parameters(), lr=self.config['training']['optimizer']['learning_rate'])
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']  
 
     def load_config(self):
@@ -198,7 +200,6 @@ class Agent:
         """
         self.mode = "train"
         self.online_net.train()
-        self.GAT.train()
 
     def eval(self):
         """
@@ -206,7 +207,6 @@ class Agent:
         """
         self.mode = "eval"
         self.online_net.eval()
-        self.GAT.eval()
 
     def update_target_net(self):
         """
@@ -232,21 +232,12 @@ class Agent:
             load_from: File name of the pretrained model checkpoint.
         """
         print("loading model from %s\n" % (load_from))
-        # try:
-        #     if self.use_cuda:
-        #         state_dict = torch.load(load_from)
-        #     else:
-        #         state_dict = torch.load(load_from, map_location='cpu')
-        #     self.online_net.load_state_dict(state_dict)
-        # except:
-        #     print("Failed to load checkpoint...")
         try:
             if self.use_cuda:
-                checkpoint = torch.load(load_from)
+                state_dict = torch.load(load_from)
             else:
-                checkpoint = torch.load(load_from, map_location='cpu')
-            self.online_net.load_state_dict(checkpoint['online_net'])
-            self.GAT.load_state_dict(checkpoint['gat'])
+                state_dict = torch.load(load_from, map_location='cpu')
+            self.online_net.load_state_dict(state_dict)
         except:
             print("Failed to load checkpoint...")
 
@@ -254,8 +245,7 @@ class Agent:
         """
         Save pytorch agent model
         """
-        # torch.save(self.online_net.state_dict(), save_to)
-        torch.save({'online_net' : self.online_net.state_dict(), 'gat': self.GAT.state_dict()}, save_to)
+        torch.save(self.online_net.state_dict(), save_to)
         print("Saved checkpoint to %s..." % (save_to))
 
     def init(self, obs, infos):
@@ -500,7 +490,7 @@ class Agent:
             local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
     
             self.state.step(self.get_state_strings(infos)[0], commands[0])
-            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
 
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
@@ -556,7 +546,7 @@ class Agent:
             # there is epsilon of chance to generate random commands
 
             self.state.step(self.get_state_strings(infos)[0], commands[0] )
-            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
 
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
@@ -641,12 +631,12 @@ class Agent:
         loader = DataLoader(kg_info_data, batch_size=batch_size)
         
         batch = next(iter(loader))
-        gat_out = self.GAT(batch, temp1)
+        gat_out = self.online_net.GAT(batch, temp1)
 
         next_loader = DataLoader(next_kg_info_data, batch_size=batch_size)
         next_batch = next(iter(next_loader))
 
-        next_gat_out = self.GAT(next_batch,temp2)
+        next_gat_out = self.online_net.GAT(next_batch,temp2)
         
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
         input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
@@ -804,7 +794,7 @@ class Agent:
     def answer_question_act_greedy(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char):
 
         with torch.no_grad():
-            gat_out = self.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
             vocab_distribution, _, vocab_mask = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char,gat_out, use_model="online")  # batch x time
             positions_maxq = self.point_maxq_position(vocab_distribution, vocab_mask)
             return positions_maxq  # batch
@@ -844,7 +834,7 @@ class Agent:
         #Check kg_info_data
         loader = DataLoader(kg_info_data, batch_size=self.replay_batch_size)
         batch_gat = next(iter(loader))
-        gat_out = self.GAT(batch_gat, temp1)
+        gat_out = self.online_net.GAT(batch_gat, temp1)
 
         observation_list = batch.observation_list
         quest_list = batch.quest_list

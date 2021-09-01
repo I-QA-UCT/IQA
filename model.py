@@ -20,13 +20,14 @@ logger = logging.getLogger(__name__)
 class DQN(torch.nn.Module):
     model_name = 'dqn'
 
-    def __init__(self, config, word_vocab, char_vocab, answer_type="pointing", generate_length=3):
+    def __init__(self, config, word_vocab, char_vocab, device, answer_type="pointing", generate_length=3):
         super(DQN, self).__init__()
         self.config = config
         self.word_vocab = word_vocab
         self.word_vocab_size = len(word_vocab)
         self.char_vocab = char_vocab
         self.char_vocab_size = len(char_vocab)
+        self.device = device
         self.generate_length = generate_length
         self.answer_type = answer_type
         self.read_config()
@@ -87,7 +88,9 @@ class DQN(torch.nn.Module):
         """
         Create the layers of the DQN
         """
-
+        params = self.config['gat']
+        self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
+        
         # word embeddings
         if self.use_pretrained_embedding:
             self.word_embedding = Embedding(embedding_size=self.word_embedding_size,

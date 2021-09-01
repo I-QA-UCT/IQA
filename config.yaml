@@ -1,11 +1,11 @@
 general:
-  train_data_size: 500  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
+  train_data_size: 1  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
   random_map: False  # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
-  question_type: "attribute"  # location, existence, attribute
+  question_type: "location"  # location, existence, attribute
   random_seed: 42  # the secret of deep learning.
   naozi_capacity: 1  # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
-  use_cuda: False  # disable this when running on machine without cuda
+  use_cuda: True  # disable this when running on machine without cuda
 
 training:
   batch_size: 1
@@ -26,9 +26,9 @@ evaluate:
   max_nb_steps_per_episode: 80  # after this many steps, a game is terminated
 
 checkpoint:
-  save_checkpoint: True
+  save_checkpoint: False
   save_frequency: 1000  # episode
-  experiment_tag: 'DQN_500_Fixed_attribute'
+  experiment_tag: 'DQN_500_Fixed_location'
   load_pretrained: False  # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
@@ -83,7 +83,7 @@ model:
   question_answerer_hidden_dim: 64
 
 gat:
-  openIE_port: 9001
+  openIE_port: 9000
   use_bert: True
   bert_size: 'small' #tiny=2/128, mini=4/256, small=4/512, medium=8/512, base=12/768
   vocab_size: None #Amana state embeddings
