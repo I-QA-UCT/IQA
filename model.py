@@ -299,11 +299,11 @@ class GAT(torch.nn.Module):
         adj = graph_rep.edge_index
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.attentions(x, adj)
-        x = F.elu(x) #Optional nonlinearity function
+        # x = F.elu(x) #Optional nonlinearity function
         x = F.dropout(x, self.dropout, training=self.training)
-        # return x
-        x = self.out_attention(x, adj)
-        return F.elu(x) #For multi head attention
+        return x
+        # x = self.out_attention(x, adj)
+        # return F.elu(x) #For multi head attention
 
     #TODO: Add multi-head attention to config 
 
