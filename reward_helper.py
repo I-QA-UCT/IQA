@@ -322,6 +322,37 @@ def check_reasoning_path_reward_sequence(asked_entity, asked_attribute, sequence
 
     return rewards
 
+def get_sufficient_info_reward_attribute_during(reward_helper_info):
+    asked_entities = reward_helper_info["_entities"]
+    asked_attributes = reward_helper_info["_attributes"]
+    init_game_facts = reward_helper_info["init_game_facts"]
+    full_facts = reward_helper_info["full_facts"]
+    answers = reward_helper_info["answers"]
+    game_facts_per_step = reward_helper_info["game_facts_per_step"]  # batch x game step+1
+    commands_per_step = reward_helper_info["commands_per_step"]  # batch x game step+1
+    # game_finishing_mask = reward_helper_info["game_finishing_mask"]  # game step x batch size
+    rewards = []
+    coverage_rewards = []
+    seen_entity_reward = []
+    for i in range(len(asked_entities)):  # Iterate over batch
+        reward = check_reasoning_path_reward_sequence(asked_entities[i], asked_attributes[i],
+                                                      game_facts_per_step[i], commands_per_step[i], bool(int(answers[i])))                                        
+        rewards.append(reward)
+
+        # add coverage
+        end_facts = set()  # world discovered so far = union of observing game facts of all steps
+        for t in range(len(game_facts_per_step[i])):
+            end_facts = end_facts | set(game_facts_per_step[i][t])
+        coverage = exploration_coverage(full_facts[i], end_facts, init_game_facts[i])
+        coverage_rewards.append(coverage)
+
+        seen_entities = set(name for f in end_facts for name in f.names)
+        seen_entity_reward.append(1.0 if asked_entities[i] in seen_entities else 0.0)
+
+    coverage_rewards = np.array(coverage_rewards)
+    seen_entity_reward = np.array(seen_entity_reward)
+    res = np.expand_dims(coverage_rewards + seen_entity_reward, axis=-1) * 0.1
+    return res  # batch x game step
 
 def get_sufficient_info_reward_attribute(reward_helper_info):
     asked_entities = reward_helper_info["_entities"]
@@ -416,11 +447,46 @@ def exploration_coverage(full_facts, end_facts, init_facts):
     coverage = float(discovered) / float(needs_to_be_discovered)
     return max(coverage, 0.0)
 
+def get_sufficient_info_reward_existence_during(reward_helper_info):
+
+    sufficient_info_reward = []
+    answers = reward_helper_info["answers"]
+    game_facts_per_step = reward_helper_info["game_facts_per_step"]  # batch x step num
+    init_game_facts = reward_helper_info["init_game_facts"]
+    full_facts = reward_helper_info["full_facts"]
+    asked_entities = reward_helper_info["_entities"]
+    observation_before_finish = reward_helper_info["observation_before_finish"]
+
+    for i in range(len(observation_before_finish)):
+        if answers[i] == "1":
+            # if something exists, agent knows it as soon as it sees it
+            for ent, obs in zip(asked_entities, observation_before_finish):
+                obs = obs.split()
+                flag = True
+                for w in ent.split():
+                    if w not in obs:
+                        sufficient_info_reward.append(0.0)
+                        flag = False
+                        break
+                if flag:
+                    sufficient_info_reward.append(1.0)
+        elif answers[i] == "0":
+            # the agent has to exhaust room and containers to get this reward
+            end_facts = set()  # world discovered so far = union of observing game facts of all steps
+            for t in range(len(game_facts_per_step[i])):
+                end_facts = end_facts | set(game_facts_per_step[i][t])
+            coverage = exploration_coverage(full_facts[i], end_facts, init_game_facts[i])
+            sufficient_info_reward.append(coverage)
+        else:
+            raise NotImplementedError
+            
+    return sufficient_info_reward  # batch x game step
 
 def get_sufficient_info_reward_existence(reward_helper_info):
 
     sufficient_info_reward = []
     answers = reward_helper_info["answers"]
+
     game_facts_per_step = reward_helper_info["game_facts_per_step"]  # batch x step num
     init_game_facts = reward_helper_info["init_game_facts"]
     full_facts = reward_helper_info["full_facts"]
