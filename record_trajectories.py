@@ -197,15 +197,6 @@ def train(variant):
             state_strings = agent.get_state_strings(infos)
             _ = agent.get_binarized_count(state_strings, update=True)
 
-            returns_to_go = 1
-
-            # if agent.question_type == "location":
-            #     returns_to_go = 1
-            # elif agent.question_type == "existence":
-            #     returns_to_go = 1 # if answers[0] == "yes" else {0-1} ?
-            # elif agent.question_type == "attribute":
-
-
             states = []
             ### The actual game step loop where the agent performs actions
             for step_no in range(agent.max_nb_steps_per_episode):
@@ -217,7 +208,6 @@ def train(variant):
                         # This essentially allows us to fine tune how much context and history the agent has access to at each step
                         agent.naozi.push_one(i, copy.copy(observation_strings[i]))
                     
-
                     if agent.prev_step_is_still_interacting[i] == 1:
                         new_facts = process_facts(last_facts[i], infos["game"][i], infos["facts"][i], infos["last_action"][i], commands[i])
                         game_facts_cache[i].append(new_facts)  # info used in reward computing of existence question
@@ -361,7 +351,6 @@ def train(variant):
                     
                     # Batch size of 1 so commands_per_step only has a single list inisde another list.
                     split_commands = commands_per_step[0][step+1].split()
-                    print(split_commands, state)
                     act, mod, obj = "", "[PAD]" , "[PAD]" 
 
                     if len(split_commands) == 3:

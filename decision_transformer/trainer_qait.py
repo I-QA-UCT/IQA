@@ -1,4 +1,3 @@
-# from ftfy import fix_text
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -81,14 +80,22 @@ def process_input(state, question, command, sequence_length, word2id, pad_token,
 
 class JsonDataset(Dataset):
 
-    def __init__(self, offline_rl_data_filename, sentence_length=200, max_episodes=50, correct_traj_prop=0.7, use_bert=False, question_type="location"):      
+    def __init__(
+        self, 
+        dataset,
+        sentence_length=200, 
+        max_episodes=50, 
+        use_bert=False, 
+        question_type="location",
+    ):      
+
         self.sentence_length = sentence_length
         self.max_episodes = max_episodes
         
         self.question_type = question_type
 
         self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
-        self.trajectories = self.load(RELATIVE_PATH + offline_rl_data_filename, WORD_ENCODINGS)
+        self.trajectories = self.load(RELATIVE_PATH + dataset, WORD_ENCODINGS)
         
         # Shuffle data
         # random.seed(42)
@@ -199,7 +206,7 @@ class Trainer:
 
             self.model.eval()
             for eval_fn in self.eval_fns:
-                outputs = eval_fn(self.model)
+                outputs = eval_fn(self.model, iter_num=iter_num)
                 for k, v in outputs.items():
                     logs[f'evaluation/{k}'] = v
             
@@ -240,8 +247,14 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
     
-    def __init__(self, data, context_window=180, question_type="location", model_type="bert"):
-        offline_rl_data_filename = RELATIVE_PATH + data + ".json"
+    def __init__(
+        self,
+        dataset,
+        context_window=180,
+        question_type="location",
+        model_type="bert"
+    ):
+        offline_rl_data_filename = RELATIVE_PATH + dataset + ".json"
         word_encodings_filename = WORD_ENCODINGS
 
         self.question_type = question_type
@@ -307,14 +320,23 @@ class QuestionAnsweringDataLoader(Dataset):
     
 class QuestionAnsweringTrainer(Trainer):
 
-    def __init__(self,model, optimizer, loss_fn, batch_size=4, get_batch=None, data="dqn_loc.json", num_workers=1):
+    def __init__(
+        self,
+        model, 
+        optimizer,
+        loss_fn,
+        batch_size=4,
+        get_batch=None,
+        dataset="dqn_loc.json",
+        num_workers=1
+    ):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
-        dataset = QuestionAnsweringDataLoader(data, model.context_window, model.question_type, model.pretrained_model)
-        train_size = round(len(dataset)*0.8)
-        eval_size = len(dataset) - train_size
+        qa_dataset = QuestionAnsweringDataLoader(dataset, model.context_window, model.question_type, model.pretrained_model)
+        train_size = round(len(qa_dataset)*0.8)
+        eval_size = len(qa_dataset) - train_size
         self.train_subset, self.val_subset = torch.utils.data.random_split(
-                dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(model.context_window))
+                qa_dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(model.context_window))
         
         self.dataloader = DataLoader(dataset=self.train_subset, shuffle=True, batch_size=batch_size)
         self.val_loader = DataLoader(dataset=self.val_subset, shuffle=False, batch_size=batch_size)
@@ -424,18 +446,4 @@ class SequenceTrainer(Trainer):
             self.diagnostics['training/action_error'] = loss.detach().cpu().item()
 
         return loss.detach().cpu().item()
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--data', type=str, default="random_rollouts.json")
-    
-    parser.add_argument('--directory', type=str, default="./decision_transformer/saved_models")
-    parser.add_argument('--env', type=str, default="qa_random_rollouts_location")
-    parser.add_argument('--max_iters', type=int, default=100)
-
-    args = vars(parser.parse_args())
-
     

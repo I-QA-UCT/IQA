@@ -74,8 +74,6 @@ def evaluate(data_path, agent, variant, model=None):
                 question_type="location"
             )
             model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
-            model.question_type = agent.config["general"]["question_type"]
-
         else:
             model.eval()
 
@@ -84,7 +82,7 @@ def evaluate(data_path, agent, variant, model=None):
         model = model.to(device=device)
 
         # Create randon numpy number generator for sampling reward.
-        np_rng = np.random.RandomState(agent.config["general"]["random_seed"])  # can be called without a seed
+        np_rng = np.random.RandomState(agent.config["general"]["random_seed"] +  variant.get("iter_num",0))  # can be called without a seed
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -160,7 +158,7 @@ def evaluate(data_path, agent, variant, model=None):
                 initial_reward = np_rng.exponential(0.4)+1
             else:
                 raise NotImplementedError
-
+            # print(initial_reward)
             rewards = [[initial_reward]] # batch x reward x timestep
             padded_state_history = []
             state_masks = []
@@ -191,9 +189,8 @@ def evaluate(data_path, agent, variant, model=None):
                         state_masks.append(state_mask)
                         action_masks.append(action_mask)
 
-                    # print(f"Step no: {step_no} | State: {observation_strings_w_history[-1]} | Prev command: {commands_per_step[i][-1]} | Question: {questions[q_no]} ")
                     commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,list(range(step_no+1)),obs, padded_state_history, rewards,model=model)
-                    # print(f"Model: Action : {commands} | Answer {answer} | Question: {questions[q_no]}")
+
                     if "wait" in commands:
                         step_no = agent.eval_max_nb_steps_per_episode - 1
 
@@ -212,11 +209,26 @@ def evaluate(data_path, agent, variant, model=None):
                 observation_strings = [a + " <|> " + item for a, item in zip(commands, observation_strings)]
                 
                 reward_helper_info["observation_before_finish"] = agent.naozi.get()
-                sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_location_during(reward_helper_info)
+
+                if agent.question_type == "location":
+                    sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_location_during(reward_helper_info)
+                elif agent.question_type == "attribute":
+                    reward_helper_info["answers"] = answers
+                    reward_helper_info["game_facts_per_step"] = game_facts_cache  # facts before and after issuing commands (we want to compare the differnce)
+                    reward_helper_info["init_game_facts"] = init_facts
+                    reward_helper_info["full_facts"] = infos["facts"]
+                    reward_helper_info["commands_per_step"] = commands_per_step  # commands before and after issuing commands (we want to compare the differnce)
+                    sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_attribute_during(reward_helper_info)
+                elif agent.question_type == "existence":
+                    reward_helper_info["answers"] = answers
+                    reward_helper_info["game_facts_per_step"] = game_facts_cache  # facts before issuing command (we want to stop at correct state)
+                    reward_helper_info["init_game_facts"] = init_facts
+                    reward_helper_info["full_facts"] = infos["facts"]
+                    sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_existence_during(reward_helper_info)
+
                 state_strings = agent.get_state_strings(infos)
                 rewards.append(sufficient_info_reward_np)
-
-                rewards[-1][0] = rewards[-2][0] - rewards[-1][0] if rewards[-1][0] > 0 else 0
+                rewards[-1][0] = max(rewards[-2][0] - rewards[-1][0],0)
                 if (step_no == agent.eval_max_nb_steps_per_episode - 1 ) or (step_no > 0 and np.sum(generic.to_np(replay_info[-1])) == 0):
                     break
 

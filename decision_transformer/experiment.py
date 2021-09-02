@@ -28,6 +28,8 @@ def discount_cumsum(x, gamma):
         discount_cumsum[t] = x[t] + gamma * discount_cumsum[t+1]
     return discount_cumsum
 
+def exponential_moving_average(curr, prev, alpha=0.7):
+    return alpha*curr + (1-alpha)*prev
 
 def experiment(
         exp_prefix,
@@ -36,8 +38,11 @@ def experiment(
     device = variant.get('device', 'cuda') # cuda or cpu
 
     log_to_wandb = variant.get('log_to_wandb', False)
+    
+    random_map =  variant["random_map"]
+    map_type = "random_map" if random_map else "fixed_map"
 
-    env_name, dataset = variant['env'], variant['dataset']
+    env_name, dataset = variant['env'], map_type+ "/" + variant['dataset']
     model_type = variant['model_type']
     group_name = f'{exp_prefix}-{env_name}-{dataset}'
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
@@ -47,7 +52,7 @@ def experiment(
     # if env_name in valid_env_names:
     max_ep_len = 50
     env_targets = [3600, 1800]  # evaluation conditioning targets
-    scale = 10.  # normalization for rewards/returns
+    scale = 1.  # normalization for rewards/returns
     # else:
     #     raise NotImplementedError
     act_dim = 3 # act, mod, obj
@@ -62,7 +67,14 @@ def experiment(
     question_type = variant["question_type"]
     # load dataset
     dataset_filename = f'{dataset}.json'
-    trajectories = JsonDataset(dataset_filename,state_dim,max_episodes=max_ep_len,use_bert=bert_embeddings,question_type=question_type)
+    
+    trajectories = JsonDataset(
+        dataset_filename,
+        state_dim,
+        max_episodes=max_ep_len,
+        use_bert=bert_embeddings,
+        question_type=question_type,
+    )
 
     # save all path information into separate lists
     mode = "normal"
@@ -167,13 +179,18 @@ def experiment(
         
         return s, a, r, rtg, timesteps, mask, ans, state_mask, action_mask
 
-    def eval_episodes(model):
+    def eval_episodes(model, iter_num=0):
         eval_qa_reward, eval_sufficient_info_reward = 0.0, 0.0
         # evaluate
         data_dir = "./"
         agent = Agent()
+        
+        # In the case of multiple experiments running that all use the config file, 
+        # set the necessary values of the agent to that of the model.
+        agent.question_type = question_type
+        agent.random_map = random_map
 
-        variant = {"decision_transformer" : True}
+        variant = {"decision_transformer" : True, "iter_num" : iter_num}
 
         eval_qa_reward, eval_sufficient_info_reward, eval_sufficient_info_reward_std = evaluate.evaluate(data_dir, agent, variant, model)
 
@@ -236,24 +253,32 @@ def experiment(
             config=variant
         )
         # wandb.watch(model)  # wandb has some bug
+    
     print("========== Beginning Training ==========\n")
+
+    alpha = variant["smoothing_parameter"]
     best_sufficient_info_score = float("-inf")
+    
     for iter in range(variant['max_iters']):
         outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
         
-        if 'evaluation/eval_sufficient_info_reward' in outputs and outputs['evaluation/eval_sufficient_info_reward'] > best_sufficient_info_score:
-            best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
-            torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
+        if 'evaluation/eval_sufficient_info_reward' in outputs:
+            if best_sufficient_info_score == float("-inf"):
+                best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
+                exp_move_avg = best_sufficient_info_score
+            else: 
+                exp_move_avg = exponential_moving_average(
+                    curr=outputs['evaluation/eval_sufficient_info_reward'],
+                    prev=exp_move_avg,
+                    alpha=alpha,
+                )
+                if exp_move_avg >= best_sufficient_info_score:
+                    best_sufficient_info_score = exp_move_avg
+                    torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
         
         if log_to_wandb:
             wandb.log(outputs)
 
-
-    # qa = "_qa" if variant["answer_question"] else ""
-    # print()
-    # torch.save(model.state_dict(), f"./decision_transformer/saved_models/{variant['env']}{qa}.pt")
-    # with open(f"./decision_transformer/saved_models/{variant['env']}{qa}_config.pkl", "wb") as config:
-    #     pickle.dump(variant, config)
 
 def qa_experiment(
     exp_prefix,
@@ -263,7 +288,10 @@ def qa_experiment(
 
     log_to_wandb = variant.get('log_to_wandb', False)
 
-    env_name, dataset = variant['env'], variant['dataset']
+    random_map =  variant["random_map"]
+    map_type = "random_map" if random_map else "fixed_map"
+    
+    env_name, dataset = variant['env'],map_type +"/"+variant['dataset'] 
     model_type = variant['pretrained_model']
     group_name = f'{exp_prefix}-{env_name}-{dataset}'
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
@@ -303,7 +331,7 @@ def qa_experiment(
         loss_fn, 
         batch_size=variant["batch_size"],
         num_workers=variant["num_workers"],
-        data=variant["dataset"],
+        data=dataset,
     )
     
     epochs = variant['max_iters']
@@ -344,16 +372,18 @@ if __name__ == '__main__':
     parser.add_argument('--log_to_wandb', '-w', type=bool)
     parser.add_argument('--state_context_window', '-state', type=int, default=170)
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
-    parser.add_argument('--answer_question', '-qa', type=bool, default=False)
     parser.add_argument('--embed_type', type=str, default="normal")
     parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
     parser.add_argument('--eval_per_iter', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=2)
-    parser.add_argument('--question_type', '-qt' ,type=str, default="location")
     parser.add_argument('--pretrained_model' ,type=str, default="longformer")
+    parser.add_argument('--question_type', '-qt' ,type=str, default="location")
+    parser.add_argument('--random_map', '-mt' ,type=bool, default=True)
+    parser.add_argument('--smoothing_parameter', '-alpha' ,type=float, default=0.7)
 
-
+    
     args = vars(parser.parse_args())
+
     model_type = args["model_type"]
 
     if model_type == "dt":
