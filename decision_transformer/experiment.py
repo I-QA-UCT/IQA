@@ -13,6 +13,7 @@ import argparse
 import pickle
 import random
 import sys
+import json
 
 from evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 from model_qait import DecisionTransformer, QuestionAnsweringModule
@@ -259,26 +260,31 @@ def experiment(
     alpha = variant["smoothing_parameter"]
     best_sufficient_info_score = float("-inf")
     
-    for iter in range(variant['max_iters']):
-        outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
-        
-        if 'evaluation/eval_sufficient_info_reward' in outputs:
-            if best_sufficient_info_score == float("-inf"):
-                best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
-                exp_move_avg = best_sufficient_info_score
-            else: 
-                exp_move_avg = exponential_moving_average(
-                    curr=outputs['evaluation/eval_sufficient_info_reward'],
-                    prev=exp_move_avg,
-                    alpha=alpha,
-                )
-                if exp_move_avg >= best_sufficient_info_score:
-                    best_sufficient_info_score = exp_move_avg
-                    torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
-        
-        if log_to_wandb:
-            wandb.log(outputs)
+    with open(f"./decision_transformer/training_logs/{env_name}.json","w") as training_logs:
 
+        for iter in range(variant['max_iters']):
+            outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
+            
+            if 'evaluation/eval_sufficient_info_reward' in outputs:
+                if best_sufficient_info_score == float("-inf"):
+                    best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
+                    exp_move_avg = best_sufficient_info_score
+                else: 
+                    exp_move_avg = exponential_moving_average(
+                        curr=outputs['evaluation/eval_sufficient_info_reward'],
+                        prev=exp_move_avg,
+                        alpha=alpha,
+                    )
+                    if exp_move_avg >= best_sufficient_info_score:
+                        best_sufficient_info_score = exp_move_avg
+                        torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
+            
+            if log_to_wandb:
+                wandb.log(outputs)
+                
+            outputs["iteration"] = iter+1
+            print(json.dumps(outputs),file=training_logs)
+            training_logs.flush()
 
 def qa_experiment(
     exp_prefix,
