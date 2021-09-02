@@ -74,8 +74,11 @@ def evaluate(data_path, agent, variant, model=None):
                 question_type="location"
             )
             model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
-        else:
-            model.eval()
+        
+        model.eval()
+        
+        assert model.question_type == agent.question_type, f"Incorrect question_type loaded from agent's config. Expected '{model.question_type}' but found '{agent.question_type}'."
+        
 
         # Add model to cuda (if compatible)
         device = "cuda" if agent.use_cuda else "cpu"

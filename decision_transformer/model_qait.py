@@ -234,17 +234,14 @@ class DecisionTransformer(nn.Module):
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, device=device, **kwargs)
 
-        if self.question_type == "location":
+        softmax = nn.Softmax(dim=0)
+        action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
+        modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[-1,-1]))
+        object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[-1,-1]))
 
-            softmax = nn.Softmax(dim=0)
-            action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
-            modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[-1,-1]))
-            object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[-1,-1]))
-
-            return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
+        return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
         
-        elif self.question_type in ["existence", "attribute"]:
-            return  torch.argmax(action_preds[-1,-1]), torch.argmax(modifier_preds[-1,-1]), torch.argmax(object_preds[-1,-1]), torch.argmax(answer_pred[-1,-1])
+
 
 class QuestionAnsweringModule(nn.Module):
     def __init__(
