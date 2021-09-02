@@ -281,7 +281,7 @@ def experiment(
             
             if log_to_wandb:
                 wandb.log(outputs)
-                
+
             outputs["iteration"] = iter+1
             print(json.dumps(outputs),file=training_logs)
             training_logs.flush()
@@ -343,17 +343,23 @@ def qa_experiment(
     epochs = variant['max_iters']
 
     print("========== Beginning Training ==========\n")
-    max_accuracy = 0
-    for epoch in range(epochs):
-        outputs = trainer.train_iteration(iter_num=epoch+1, print_logs=True)
-        
-        if outputs['evaluation/QA_accuracy'] >= max_accuracy:
-            max_accuracy = outputs['evaluation/QA_accuracy']
-            torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
-        
-        if log_to_wandb:
-            wandb.log(outputs)
+    with open(f"./decision_transformer/training_logs/{env_name}.json","w") as training_logs:
 
+        max_accuracy = 0
+        for epoch in range(epochs):
+            outputs = trainer.train_iteration(iter_num=epoch+1, print_logs=True)
+            
+            if outputs['evaluation/QA_accuracy'] >= max_accuracy:
+                max_accuracy = outputs['evaluation/QA_accuracy']
+                torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
+            
+            if log_to_wandb:
+                wandb.log(outputs)
+            
+            outputs["iteration"] = iter+1
+            print(json.dumps(outputs),file=training_logs)
+            training_logs.flush()
+            
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='random_rollout')
