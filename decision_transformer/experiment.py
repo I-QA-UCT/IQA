@@ -336,8 +336,8 @@ def qa_experiment(
     with open(f"./decision_transformer/training_logs/{env_name}.json","w") as training_logs:
 
         max_accuracy = 0
-        for epoch in range(epochs):
-            outputs = trainer.train_iteration(iter_num=epoch+1, print_logs=True)
+        for iter in range(epochs):
+            outputs = trainer.train_iteration(iter_num=iter+1, print_logs=True)
             
             if outputs['evaluation/QA_accuracy'] >= max_accuracy:
                 max_accuracy = outputs['evaluation/QA_accuracy']
