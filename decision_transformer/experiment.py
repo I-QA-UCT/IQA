@@ -327,7 +327,7 @@ def qa_experiment(
         loss_fn, 
         batch_size=variant["batch_size"],
         num_workers=variant["num_workers"],
-        data=dataset,
+        dataset=dataset,
     )
     
     epochs = variant['max_iters']
