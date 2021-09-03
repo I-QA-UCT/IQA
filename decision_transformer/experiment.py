@@ -15,6 +15,8 @@ import random
 import sys
 import json
 
+from collections import deque
+
 from evaluate_episodes import evaluate_episode, evaluate_episode_rtg
 from model_qait import DecisionTransformer, QuestionAnsweringModule
 from trainer_qait import JsonDataset, SequenceTrainer, QuestionAnsweringTrainer
@@ -256,28 +258,16 @@ def experiment(
         # wandb.watch(model)  # wandb has some bug
     
     print("========== Beginning Training ==========\n")
-
-    alpha = variant["smoothing_parameter"]
-    best_sufficient_info_score = float("-inf")
-    
+    min_loss = float("inf")
     with open(f"./decision_transformer/training_logs/{env_name}.json","w") as training_logs:
 
         for iter in range(variant['max_iters']):
             outputs = trainer.train_iteration(num_steps=variant['num_steps_per_iter'], iter_num=iter+1, print_logs=True, evaluate=(iter+1) % variant["eval_per_iter"]==0)
             
-            if 'evaluation/eval_sufficient_info_reward' in outputs:
-                if best_sufficient_info_score == float("-inf"):
-                    best_sufficient_info_score = outputs['evaluation/eval_sufficient_info_reward']
-                    exp_move_avg = best_sufficient_info_score
-                else: 
-                    exp_move_avg = exponential_moving_average(
-                        curr=outputs['evaluation/eval_sufficient_info_reward'],
-                        prev=exp_move_avg,
-                        alpha=alpha,
-                    )
-                    if exp_move_avg >= best_sufficient_info_score:
-                        best_sufficient_info_score = exp_move_avg
-                        torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
+            
+            if (iter+1) > variant["warmup_iterations"] and outputs["training/train_loss_mean"] <= min_loss:
+                min_loss = outputs["training/train_loss_mean"]
+                torch.save(model,f"{variant['model_out']}/{variant['env']}.pt")
             
             if log_to_wandb:
                 wandb.log(outputs)
@@ -391,7 +381,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_model' ,type=str, default="longformer")
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
     parser.add_argument('--random_map', '-mt' ,type=bool, default=True)
-    parser.add_argument('--smoothing_parameter', '-alpha' ,type=float, default=0.7)
+    parser.add_argument('--warmup_iterations', '-mt' ,type=int, default=500)
 
     
     args = vars(parser.parse_args())
