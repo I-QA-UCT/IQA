@@ -381,7 +381,7 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_model' ,type=str, default="longformer")
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
     parser.add_argument('--random_map', '-mt' ,type=bool, default=True)
-    parser.add_argument('--warmup_iterations', '-mt' ,type=int, default=500)
+    parser.add_argument('--warmup_iterations' ,type=int, default=500)
 
     
     args = vars(parser.parse_args())
