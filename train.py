@@ -282,6 +282,7 @@ def train(data_path):
         # rewards
         # qa reward
         qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
+        # print("qa_reward_np", qa_reward_np)
         # sufficient info rewards
         masks = [item[-1] for item in transition_cache]
         

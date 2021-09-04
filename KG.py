@@ -37,6 +37,10 @@ class SupplementaryKG(object):
         self.bert = BertEmbedder(bert_size, [], self.device)
         self.embeds = []
         self.bert_lookup = {}
+        node_embedding = self.bert.embed("you").squeeze(0)
+        #Summarizer
+        node_embedding= node_embedding.mean(dim=0)
+        self.bert_lookup["you"] = node_embedding
 
         if bert_size == 'tiny':
             self.bert_size_int = 128
@@ -236,9 +240,7 @@ class SupplementaryKG(object):
         self.entity_nums =0
         self.embeds.clear()
 
-
     def state_ent_emb_bert(self):
-
         entities = list(self.entities.keys())
         num_current = len(self.embeds)
         for i in range(num_current, len(entities)):
@@ -247,9 +249,8 @@ class SupplementaryKG(object):
             else:
                 graph_node_text = entities[i].replace('_', ' ')
                 node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-
                 #Summarizer
-                node_embedding= node_embedding.mean(dim=0) 
+                node_embedding= node_embedding.mean(dim=0)
                 self.embeds.append(node_embedding)
                 self.bert_lookup[entities[i]] = node_embedding
     
@@ -270,9 +271,9 @@ class SupplementaryKG(object):
         edge_index = torch.tensor(self.adj_matrix, dtype=torch.long, device = self.device)
 
         self.state_ent_emb_bert()
-
         if len(self.embeds) == 0:
             self.embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+            # self.embeds = [self.bert_lookup["you"]]
         data = Data(x=torch.stack(self.embeds), edge_index=edge_index).to(self.device)
 
         return data

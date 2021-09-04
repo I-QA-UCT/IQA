@@ -595,7 +595,6 @@ class Agent:
         kg_info_data = []
         next_kg_info_data = []
         for ents, next_ents, adj_mat, next_adj_mat in zip(ents_list, next_ents_list, adj_mat_list, next_adj_mat_list):
-            temp1.append(len(ents.keys()))
             edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
@@ -607,10 +606,13 @@ class Agent:
                 embeds.append(self.state.bert_lookup[i])
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                # embeds = [self.state.bert_lookup["you"]]
+                temp1.append(1)
+            else:
+                temp1.append(len(ents.keys()))
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
-            temp2.append(len(next_ents.keys()))
             next_edge_index = torch.tensor(next_adj_mat, dtype=torch.long, device = self.device)
             next_embeds = []
             for i in list(next_ents.keys()):
@@ -622,6 +624,11 @@ class Agent:
                 next_embeds.append(self.state.bert_lookup[i])
             if len(next_embeds) == 0:
                 next_embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                next_embeds = [self.state.bert_lookup["you"]]
+                temp2.append(1)
+            else:
+                temp2.append(len(next_ents.keys()))
+
             next_data = Data(x=torch.stack(next_embeds), edge_index=next_edge_index).to(self.device)
             next_kg_info_data.append(next_data)
 
@@ -770,6 +777,8 @@ class Agent:
         observation = to_pt(pad_sequences(observation_id_list, maxlen=max_length).astype('int32'), self.use_cuda)
         vocab_distribution = np.zeros((batch_size, len(self.word_vocab)))  # batch x vocab
         vocab_distribution = to_pt(vocab_distribution, self.use_cuda, type='float')
+        
+
         vocab_distribution = vocab_distribution.scatter_add_(1, observation, pred)  # batch x vocab
         non_zero_words = []
         for i in range(batch_size):
@@ -814,20 +823,17 @@ class Agent:
         temp1 = []
         kg_info_data = []
         for ents, adj_mat in zip(ents_list, adj_mat_list):
-            temp1.append(len(ents.keys()))
             edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                # graph_node_text = i.replace('_', ' ')
-                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                # #Summarizer
-                # node_embedding= node_embedding.mean(dim=0) 
-
-                # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
 
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                # embeds = [self.state.bert_lookup["you"]]
+                temp1.append(1)
+            else:
+                temp1.append(len(ents.keys()))
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
