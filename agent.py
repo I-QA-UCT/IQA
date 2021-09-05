@@ -44,12 +44,8 @@ class Agent:
                 param.requires_grad = False
 
             if self.use_cuda:
-                if torch.cuda.device_count()>1:
-                    self.online_net = torch.nn.DataParallel(self.online_net)
-                    self.target_net = torch.nn.DataParallel(self.target_net)
-
-                self.online_net.cuda()
-                self.target_net.cuda()
+                self.online_net.cuda(self.use_gpu)
+                self.target_net.cuda(self.use_gpu)
         else:
             # Create the actor critic model
             self.online_net = ActorCritic(config=self.config,
@@ -58,9 +54,7 @@ class Agent:
                                           answer_type=self.answer_type)
             self.online_net.train()                             
             if self.use_cuda:
-                if torch.cuda.device_count()>1:
-                    self.online_net = torch.nn.DataParallel(self.online_net)
-                self.online_net.cuda()
+                self.online_net.cuda(self.use_gpu)
                 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
@@ -138,7 +132,8 @@ class Agent:
                 torch.backends.cudnn.deterministic = True
                 torch.cuda.manual_seed(self.random_seed)
                 self.use_cuda = True
-                self.device = torch.device("cuda")
+                self.use_gpu = self.config['general']['use_gpu']
+                self.device = torch.device("cuda:"+str(self.use_gpu))
         else:
             self.use_cuda = False
             self.device = torch.device("cpu")
