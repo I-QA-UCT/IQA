@@ -44,6 +44,10 @@ class Agent:
                 param.requires_grad = False
 
             if self.use_cuda:
+                if torch.cuda.device_count()>1:
+                    self.online_net = torch.nn.DataParallel(self.online_net)
+                    self.target_net = torch.nn.DataParallel(self.target_net)
+
                 self.online_net.cuda()
                 self.target_net.cuda()
         else:
@@ -54,6 +58,8 @@ class Agent:
                                           answer_type=self.answer_type)
             self.online_net.train()                             
             if self.use_cuda:
+                if torch.cuda.device_count()>1:
+                    self.online_net = torch.nn.DataParallel(self.online_net)
                 self.online_net.cuda()
                 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
