@@ -270,7 +270,7 @@ class QuestionAnsweringDataLoader(Dataset):
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
                 episode = json.loads(sample_entry)
-                if episode["steps"][-1]["reward"] < 1.0:
+                if episode["total_reward"] >= 1.0:
                     continue
                 
                 if self.question_type in ["existence","attribute"]:

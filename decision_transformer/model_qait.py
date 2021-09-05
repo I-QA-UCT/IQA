@@ -279,10 +279,15 @@ class QuestionAnsweringModule(nn.Module):
         self.hidden_size = hidden_size
 
         self.context_window = context_window
-        self.vocab_size = vocab_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        # self.lstm = nn.LSTM(self.bert.config.hidden_size, self.hidden_size, 1)
+        if self.question_type == "location":
+            self.vocab_size = vocab_size
+        elif self.question_type in ["attribute", "existence"]:
+            self.vocab_size = 2
+        else:
+            raise NotImplementedError
+
         self.out = nn.Linear(self.model.config.hidden_size, self.vocab_size)
     
     def forward(self, prompt_questions):
