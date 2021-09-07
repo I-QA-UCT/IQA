@@ -43,6 +43,7 @@ def experiment(
     log_to_wandb = variant.get('log_to_wandb', False)
     
     random_map =  variant["random_map"]
+    print(variant["random_map"])
     map_type = "random_map" if random_map else "fixed_map"
 
     env_name, dataset = variant['env'], map_type+ "/" + variant['dataset']
@@ -70,7 +71,7 @@ def experiment(
     question_type = variant["question_type"]
     # load dataset
     dataset_filename = f'{dataset}.json'
-    
+
     trajectories = JsonDataset(
         dataset_filename,
         state_dim,
@@ -284,7 +285,7 @@ def qa_experiment(
 
     log_to_wandb = variant.get('log_to_wandb', False)
 
-    random_map =  variant["random_map"]
+    random_map =  variant.get("random_map", False)
     map_type = "random_map" if random_map else "fixed_map"
     
     env_name, dataset = variant['env'],map_type +"/"+variant['dataset'] 
@@ -380,10 +381,9 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--pretrained_model' ,type=str, default="longformer")
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
-    parser.add_argument('--random_map', '-mt' ,type=bool, default=True)
+    parser.add_argument('--random_map', '-mt' ,type=bool)
     parser.add_argument('--warmup_iterations' ,type=int, default=500)
 
-    
     args = vars(parser.parse_args())
 
     model_type = args["model_type"]
