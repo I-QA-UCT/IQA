@@ -259,7 +259,8 @@ class QuestionAnsweringDataLoader(Dataset):
 
         self.question_type = question_type
         self.context_window = context_window
-
+        rng = random.Random(42)
+        
         with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
@@ -270,12 +271,25 @@ class QuestionAnsweringDataLoader(Dataset):
             for episode_no,sample_entry in enumerate(offline_rl_data):
 
                 episode = json.loads(sample_entry)
-                if episode["steps"][-1]["reward"] != 1.0:
-                    continue
                 
                 if self.question_type in ["existence","attribute"]:
-                    answer = int(episode["answer"]) # If existence or attribute Q, make the answer a 0 or 1
+                    answer = int(episode["answer"])
+
+                    # Add the trajectory to the dataset if its final state has a reward of 1.0
+                    # else if the answer is false (0), only keep timesteps with some reward attached 
+                    # from trajectory where total reward is greater than or equal to 1.0 .
+                    if episode["steps"][-1]["reward"] == 1.0:
+                        pass
+                    elif episode["answer"] == "0" and episode["total_reward"] >= 1.0:
+                        episode["steps"] = [step for step in episode["steps"] if step["reward"]>0]
+                        rng.shuffle(episode["steps"])
+                    else:
+                        continue
+                        
                 elif self.question_type == "location":
+                    if episode["steps"][-1]["reward"] != 1.0:
+                        continue
+
                     answer = word_encodings[episode["answer"]]
                 else:
                     raise NotImplementedError
