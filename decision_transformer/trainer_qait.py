@@ -263,6 +263,10 @@ class QuestionAnsweringDataLoader(Dataset):
         self.context_window = context_window
         rng = random.Random(42)
         balancer = 0 # used to cound the number of successful "Yes" trajectories in order to balance out presence of "Yes" and "No" trajectories.
+
+        if self.question_type == "existence":
+            pattern = re.compile(r"is there any (.*?) in the world \?")
+
         with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
@@ -275,6 +279,9 @@ class QuestionAnsweringDataLoader(Dataset):
                 episode = json.loads(sample_entry)
 
                 if self.question_type in ["existence","attribute"]:
+                    if self.question_type == "existence":
+                        entity = pattern.search(episode["question"])
+                        episode["entity"] = entity.groups(0)[0]
                     answer = int(episode["answer"])
                 elif self.question_type == "location":
                     if episode["steps"][-1]["reward"] != 1.0:
@@ -297,8 +304,8 @@ class QuestionAnsweringDataLoader(Dataset):
                     
                     if self.question_type == "attribute" or (self.question_type == "existence" and answer == 1):
                         for i,step in enumerate(episode["steps"]):
-                            if episode["entity"] in step["state"].split():
-                                
+                            if episode["entity"] in step["state"]:
+                                balancer +=1 # used to gurantee equal distr. of answer types.
                                 mid = i
                                 l, r = mid-1, mid+1
 
@@ -324,15 +331,14 @@ class QuestionAnsweringDataLoader(Dataset):
                                         
                                         if cleaned_states[-1] == episode["entity"] and cleaned_states[0] == episode["entity"]:
                                             break
-
                                 break
-                    
                     # This algorithm appends each state string to a deque starting from the
                     # last state observed to the first state observed. The aim of such a function
                     # is to create a context string combining the last state observed with the maximum
                     # amount of previous state strings that the context_window allows for. 
                     
                     elif self.question_type == "location" or (self.question_type == "existence" and answer == 0 and balancer > 0):
+                        
                         for game_step in reversed(episode["steps"]):
                             cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
                             if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
@@ -341,11 +347,10 @@ class QuestionAnsweringDataLoader(Dataset):
                                 cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
                                 break
                         balancer -= 1
-
                     if cleaned_states:
                         text_prompt = " ".join(cleaned_states)
                         self.dataset.append((episode["question"], text_prompt, answer))
-                        balancer +=1
+                        
 
 
                 elif model_type == "longformer":
