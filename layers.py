@@ -5,13 +5,10 @@ import numpy as np
 import torch.nn.functional as F
 import yaml
 
-with open("config.yaml") as reader:
-        gpu_device = yaml.safe_load(reader)["general"]["use_gpu"]
-
 def compute_mask(x):
     mask = torch.ne(x, 0).float()
     if x.is_cuda:
-        mask = mask.cuda(gpu_device)
+        mask = mask.cuda()
     return mask
 
 
@@ -48,7 +45,7 @@ def masked_mean(x, m=None, dim=-1):
 def to_one_hot(y_true, n_classes):
     y_onehot = torch.FloatTensor(y_true.size(0), n_classes)
     if y_true.is_cuda:
-        y_onehot = y_onehot.cuda(gpu_device)
+        y_onehot = y_onehot.cuda()
     y_onehot.zero_()
     y_onehot.scatter_(1, y_true, 1)
     return y_onehot
@@ -75,7 +72,7 @@ def PosEncoder(x, min_timescale=1.0, max_timescale=1.0e4):
     channels = x.size(2)
     signal = get_timing_signal(length, channels, min_timescale, max_timescale)
 
-    signal = signal.cuda(gpu_device) if x.is_cuda else signal
+    signal = signal.cuda() if x.is_cuda else signal
     return x + signal
 
 def get_timing_signal(length, channels, min_timescale=1.0, max_timescale=1.0e4):
@@ -171,7 +168,7 @@ class Embedding(torch.nn.Module):
     def init_weights(self):
         init_embedding_matrix = self.embedding_init()
         if self.embedding_layer.weight.is_cuda:
-            init_embedding_matrix = init_embedding_matrix.cuda(gpu_device)
+            init_embedding_matrix = init_embedding_matrix.cuda()
         self.embedding_layer.weight = torch.nn.Parameter(init_embedding_matrix)
         if not self.trainable:
             self.embedding_layer.weight.requires_grad = False
@@ -193,7 +190,7 @@ class Embedding(torch.nn.Module):
     def compute_mask(self, x):
         mask = torch.ne(x, 0).float()
         if x.is_cuda:
-            mask = mask.cuda(gpu_device)
+            mask = mask.cuda()
         return mask
 
     def forward(self, x):

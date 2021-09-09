@@ -9,8 +9,6 @@ import yaml
 import multiprocessing as mp
 from os.path import join as pjoin
 missing_words = set()
-with open("config.yaml") as reader:
-        gpu_device = yaml.safe_load(reader)["general"]["use_gpu"]
 
 def to_np(x):
     if isinstance(x, np.ndarray):
@@ -21,12 +19,12 @@ def to_np(x):
 def to_pt(np_matrix, enable_cuda=False, type='long'):
     if type == 'long':
         if enable_cuda:
-            return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.LongTensor).cuda(gpu_device))
+            return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.LongTensor).cuda())
         else:
             return torch.autograd.Variable(torch.from_numpy(np_matrix.copy()).type(torch.LongTensor))
     elif type == 'float':
         if enable_cuda:
-            return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.FloatTensor).cuda(gpu_device))
+            return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.FloatTensor).cuda())
         else:
             return torch.autograd.Variable(torch.from_numpy(np_matrix.copy()).type(torch.FloatTensor))
 

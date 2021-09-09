@@ -22,8 +22,8 @@ def read_file(filename):
     episode_counter = 0
     with jsonlines.open(filename) as reader:
         for obj in reader:
-            # if episode_counter>200:
-            #     break
+            if episode_counter>220:
+                break
             obj["Episode"] = episode_counter
             episode_counter+=1
             dataframe.append(obj)
@@ -32,22 +32,22 @@ def read_file(filename):
         
 if __name__ == "__main__":
 
-    FILENAMES = ["../experiments/a2c_existence_500_random.json","../experiments/a2c_existence_500_random_inverse_semantics.json"]
-    LINES = ["no semantics","semantics"]
+    FILENAMES = ["../experiments/a2c_existence_500_random.json","../qaitlogs/DQN_Existence_rand1_seed123_size500.json","../qaitlogs/DDQN_Existence_rand1_seed123_size500.json","../qaitlogs/Rainbow_Existence_rand1_seed123_size500.json"]
+    LINES = ["REINFORCE with baseline","DQN","DDQN","Rainbow"]
     
     SMOOTH = True
-    SMOOTHING_DEGREE = 0
+    SMOOTHING_DEGREE = 1
     
     dataframes = []
     for filename in FILENAMES:
         dataframes.append(read_file(filename))
     
-    fig = px.line(title="Training Accuracy")
+    fig = px.line(title="Training Sufficient Information")
     fig.update_xaxes(title_text='Episodes')
-    fig.update_yaxes(title_text='Accuracy')
+    fig.update_yaxes(title_text='Sufficient Information')
     
     for i,dataframe in enumerate(dataframes):
-        fig.add_scatter(x=dataframe["Episode"],y=smoothTriangle(dataframe["qa"],SMOOTHING_DEGREE) if SMOOTH else dataframe["qa"],mode="lines",name=LINES[i])
+        fig.add_scatter(x=dataframe["Episode"],y=smoothTriangle(dataframe["sufficient info"],SMOOTHING_DEGREE) if SMOOTH else dataframe["sufficient info"],mode="lines",name=LINES[i])
    
     fig.show()
     
