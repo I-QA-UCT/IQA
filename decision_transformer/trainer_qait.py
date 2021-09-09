@@ -406,7 +406,7 @@ class QuestionAnsweringTrainer(Trainer):
 
             questions, prompts, answers = batch
 
-            output = self.model.forward([p +" "+ q for q,p in zip(questions,prompts)])
+            output = self.model.forward([p +" [SEP] "+ q for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             loss = self.loss_fn(output,answers_tensor)
             self.optimizer.zero_grad()

@@ -7,7 +7,7 @@ from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 class DecisionTransformer(nn.Module):
 
@@ -295,11 +295,27 @@ class QuestionAnsweringModule(nn.Module):
 
         """
 
-        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')        
+        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')    
         output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
                 attention_mask=encoding['attention_mask'].to(device=self.device))
 
         return self.out(output["pooler_output"].to(device=self.device))
+    
+    def predict(self, states, question):
+        
+        cleaned_states = deque()
+        for state in reversed(states):
+            cleaned_state = state.replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+            if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                cleaned_states.extendleft(reversed(cleaned_state))
+            else:
+                cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
+                break
+        
+        text_prompt = " ".join(cleaned_states)
+        
+        answer_preds = self.forward([text_prompt +" [SEP] "+question])
+        return torch.argmax(answer_preds[-1])
 
 class Trajectory(object):
 
@@ -326,3 +342,4 @@ class Trajectory(object):
     def __str__(self):
         return "\n".join([f"{key}: {self.trajectory[key]} ({type(self.trajectory[key])})" for key in self.trajectory])
     
+
