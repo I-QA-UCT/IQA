@@ -285,7 +285,8 @@ class QuestionAnsweringDataLoader(Dataset):
                 if decision_transformer is not None:
                     
                     model = torch.load(decision_transformer,map_location=device)
-
+                    model.eval()
+                    
                     if self.question_type in ["existence","attribute"]:
                         answer = int(episode["answer"])
                     elif self.question_type == "location":
