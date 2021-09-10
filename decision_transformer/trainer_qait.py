@@ -254,11 +254,14 @@ class QuestionAnsweringDataLoader(Dataset):
         dataset,
         context_window=180,
         question_type="location",
-        model_type="bert"
+        model_type="bert",
+        decision_transformer = None,
     ):
         offline_rl_data_filename = RELATIVE_PATH + dataset + ".json"
         word_encodings_filename = WORD_ENCODINGS
-
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         self.question_type = question_type
         self.context_window = context_window
         rng = random.Random(42)
@@ -271,6 +274,7 @@ class QuestionAnsweringDataLoader(Dataset):
             
             self.dataset = []
             word_encodings = json.load(word_encodings_data)
+            id2word = {key:word for word,key in word_encodings.items()}
             self.vocab_size = len(word_encodings)
 
 
@@ -278,92 +282,139 @@ class QuestionAnsweringDataLoader(Dataset):
 
                 episode = json.loads(sample_entry)
 
-                if self.question_type in ["existence","attribute"]:
-                    if self.question_type == "existence":
-                        entity = pattern.search(episode["question"])
-                        episode["entity"] = entity.groups(0)[0]
-                    answer = int(episode["answer"])
-                elif self.question_type == "location":
-                    if episode["steps"][-1]["reward"] != 1.0:
-                        continue
+                if decision_transformer is not None:
+                    
+                    model = torch.load(decision_transformer,map_location=device)
 
-                    answer = word_encodings[episode["answer"]]
+                    if self.question_type in ["existence","attribute"]:
+                        answer = int(episode["answer"])
+                    elif self.question_type == "location":
+                        answer = word_encodings[episode["answer"]]
+
+                    states, actions, rtg, question = [], [], [[episode["total_reward"]]], episode["question"] 
+                    for step_no,game_step in enumerate(episode["steps"]):
+                        command = game_step["command"]
+                        state, reward, action = game_step["state"], game_step["reward"], " ".join([command["action"],command["modifier"],command["object"]])
+                        (processed_state, state_mask), (processed_command, action_mask) = process_input(
+                            state=state, 
+                            question=question,
+                            command=action, 
+                            sequence_length=model.state_dim, 
+                            word2id=word_encodings, 
+                            pad_token="<pad>", 
+                            tokenizer=None
+                        )
+                        
+                        states.append(processed_state)
+                        actions.append(processed_command)
+                        
+                        act, mod, obj, _ = model.get_command(states, actions, rtg, list(range(step_no+1)), None, None, device=device)
+                        
+                        act, mod, obj = id2word[act.cpu().item()], id2word[mod.cpu().item()] ,id2word[obj.cpu().item()]
+
+                        rtg.append([game_step["reward"]])
+                        rtg[-1][0] = max(rtg[-2][0] - rtg[-1][0],0)
+
+                        if "wait" in [act, mod, obj]:
+                            cleaned_states = deque()
+                            for step in reversed(episode["steps"][:step_no+1]):
+                                cleaned_state = step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                                if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                                    cleaned_states.extendleft(reversed(cleaned_state))
+                                else:
+                                    cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
+                                    break
+                            text_prompt = " ".join(cleaned_states)
+                            self.dataset.append((question, text_prompt, answer))
+
                 else:
-                    raise NotImplementedError
-                
+                    if self.question_type in ["existence","attribute"]:
+                        if self.question_type == "existence":
+                            entity = pattern.search(episode["question"])
+                            episode["entity"] = entity.groups(0)[0]
+                        answer = int(episode["answer"])
+                    elif self.question_type == "location":
+                        if episode["steps"][-1]["reward"] != 1.0:
+                            continue
 
-                if model_type == "bert":
-
-                    cleaned_states = deque()
-
-                    # This algorithm checks for if an entity being asked about exists in the set of states of the trajectory.
-                    # If so, those states that neighour the state containing the entity are added to either end of a deque
-                    # until the maximum context length is reached. Thereafter, we prune either end of this pumped out state string
-                    # to make sure it fits within specified context window.
-                    # This allows for states to be added to the QA trainer that contain the entity in question.
+                        answer = word_encodings[episode["answer"]]
+                    else:
+                        raise NotImplementedError
                     
-                    if self.question_type == "attribute" or (self.question_type == "existence" and answer == 1):
-                        for i,step in enumerate(episode["steps"]):
-                            if episode["entity"] in step["state"]:
-                                balancer +=1 # used to gurantee equal distr. of answer types.
-                                mid = i
-                                l, r = mid-1, mid+1
 
-                                cleaned_states.extend(episode["steps"][mid]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()) 
+                    if model_type == "bert":
 
-                                while (r < len(episode["steps"]) or l >= 0) and len(cleaned_states) < self.context_window:
-                                    
-                                    if r < len(episode["steps"]):
-                                        cleaned_state_r = episode["steps"][r]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
-                                        cleaned_states.extend(cleaned_state_r)
-                                        r+=1
+                        cleaned_states = deque()
 
-                                    if l >= 0:
-                                        cleaned_state_l = episode["steps"][l]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
-                                        cleaned_states.extendleft(reversed(cleaned_state_l))
-                                        l-=1
-                                
-                                while len(cleaned_states) >= self.context_window*0.9:
-                                        if cleaned_states[0] != episode["entity"]:
-                                            cleaned_states.popleft()
-                                        if cleaned_states[-1] != episode["entity"]:
-                                            cleaned_states.pop()
+                        # This algorithm checks for if an entity being asked about exists in the set of states of the trajectory.
+                        # If so, those states that neighour the state containing the entity are added to either end of a deque
+                        # until the maximum context length is reached. Thereafter, we prune either end of this pumped out state string
+                        # to make sure it fits within specified context window.
+                        # This allows for states to be added to the QA trainer that contain the entity in question.
+                        
+                        if self.question_type == "attribute" or (self.question_type == "existence" and answer == 1):
+                            for i,step in enumerate(episode["steps"]):
+                                if episode["entity"] in step["state"]:
+                                    balancer +=1 # used to gurantee equal distr. of answer types.
+                                    mid = i
+                                    l, r = mid-1, mid+1
+
+                                    cleaned_states.extend(episode["steps"][mid]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()) 
+
+                                    while (r < len(episode["steps"]) or l >= 0) and len(cleaned_states) < self.context_window:
                                         
-                                        if cleaned_states[-1] == episode["entity"] and cleaned_states[0] == episode["entity"]:
-                                            break
-                                break
-                    # This algorithm appends each state string to a deque starting from the
-                    # last state observed to the first state observed. The aim of such a function
-                    # is to create a context string combining the last state observed with the maximum
-                    # amount of previous state strings that the context_window allows for. 
-                    
-                    elif self.question_type == "location" or (self.question_type == "existence" and answer == 0 and balancer > 0):
+                                        if r < len(episode["steps"]):
+                                            cleaned_state_r = episode["steps"][r]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                                            cleaned_states.extend(cleaned_state_r)
+                                            r+=1
+
+                                        if l >= 0:
+                                            cleaned_state_l = episode["steps"][l]["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                                            cleaned_states.extendleft(reversed(cleaned_state_l))
+                                            l-=1
+                                    
+                                    while len(cleaned_states) >= self.context_window*0.9:
+                                            if cleaned_states[0] != episode["entity"]:
+                                                cleaned_states.popleft()
+                                            if cleaned_states[-1] != episode["entity"]:
+                                                cleaned_states.pop()
+                                            
+                                            if cleaned_states[-1] == episode["entity"] and cleaned_states[0] == episode["entity"]:
+                                                break
+                                    break
+                        # This algorithm appends each state string to a deque starting from the
+                        # last state observed to the first state observed. The aim of such a function
+                        # is to create a context string combining the last state observed with the maximum
+                        # amount of previous state strings that the context_window allows for. 
                         
-                        for game_step in reversed(episode["steps"]):
-                            cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
-                            if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
-                                cleaned_states.extendleft(reversed(cleaned_state))
-                            else:
-                                cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
-                                break
-                        balancer -= 1
-                    if cleaned_states:
-                        text_prompt = " ".join(cleaned_states)
-                        self.dataset.append((episode["question"], text_prompt, answer))
-                        
+                        elif self.question_type == "location" or (self.question_type == "existence" and answer == 0 and balancer > 0):
+                            
+                            for game_step in reversed(episode["steps"]):
+                                cleaned_state = game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
+                                if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
+                                    cleaned_states.extendleft(reversed(cleaned_state))
+                                else:
+                                    cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
+                                    break
+                            balancer -= 1
+                        if cleaned_states:
+                            text_prompt = " ".join(cleaned_states)
+                            print(answer,episode["question"],episode["entity"],text_prompt)
+                            self.dataset.append((episode["question"], text_prompt, answer))
+                            
 
 
-                elif model_type == "longformer":
-                    cleaned_states = []
-                    for game_step in episode["steps"]:
-                        cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
-                        cleaned_states.append(" ".join(cleaned_state.split()))
-                    
-                    # If the number of tokens is greater than 4050 then pop from the middle
-                    # until the no. of states is less than or equal to 4050.
-                    if len(cleaned_states) > 4050:
-                        while len(cleaned_states) > 4050:
-                            cleaned_states.pop((len(cleaned_states)-1)//2)
+                    elif model_type == "longformer":
+                        cleaned_states = []
+                        for game_step in episode["steps"]:
+                            cleaned_state = game_step["state"].replace("<|>","").replace("<pad>","")
+                            cleaned_states.append(" ".join(cleaned_state.split()))
+                        
+                        # If the number of tokens is greater than 4050 then pop from the middle
+                        # until the no. of states is less than or equal to 4050.
+                        if len(cleaned_states) > 4050:
+                            while len(cleaned_states) > 4050:
+                                cleaned_states.pop((len(cleaned_states)-1)//2)
 
                     self.dataset.append((episode["question"] ," ".join(cleaned_states), answer))
 
@@ -385,11 +436,19 @@ class QuestionAnsweringTrainer(Trainer):
         batch_size=4,
         get_batch=None,
         dataset="dqn_loc.json",
-        num_workers=1
+        num_workers=1,
+        decision_transformer = None,
     ):
         super().__init__(model, optimizer, batch_size, get_batch, loss_fn)
         
-        qa_dataset = QuestionAnsweringDataLoader(dataset, model.context_window, model.question_type, model.pretrained_model)
+        qa_dataset = QuestionAnsweringDataLoader(
+            dataset,
+            model.context_window, 
+            model.question_type, 
+            model.pretrained_model,
+            decision_transformer
+        )
+        
         train_size = round(len(qa_dataset)*0.8)
         eval_size = len(qa_dataset) - train_size
         self.train_subset, self.val_subset = torch.utils.data.random_split(

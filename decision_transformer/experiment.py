@@ -43,7 +43,7 @@ def experiment(
     log_to_wandb = variant.get('log_to_wandb', False)
     
     random_map =  variant["random_map"]
-    print(variant["random_map"])
+
     map_type = "random_map" if random_map else "fixed_map"
 
     env_name, dataset = variant['env'], map_type+ "/" + variant['dataset']
@@ -54,7 +54,7 @@ def experiment(
     # valid_env_names = set(['random_rollout','dqn_loc'])
     bert_embeddings = True if variant['embed_type'] == "bert" else False 
     # if env_name in valid_env_names:
-    max_ep_len = 50
+    max_ep_len = variant["max_ep_length"]
     env_targets = [3600, 1800]  # evaluation conditioning targets
     scale = 1.  # normalization for rewards/returns
     # else:
@@ -304,7 +304,6 @@ def qa_experiment(
     model = QuestionAnsweringModule(
         vocab_size=variant["vocab_size"],
         hidden_size=variant["embed_dim"],
-        pretrained_model=variant["pretrained_model"],
         context_window=variant["state_context_window"],
         attention_probs_dropout_prob=variant["dropout"],
         hidden_dropout_prob=variant["dropout"],
@@ -322,6 +321,11 @@ def qa_experiment(
     
     loss_fn = torch.nn.CrossEntropyLoss()
     
+
+    decision_transformer = variant.get("load_dt", None)
+    if decision_transformer is not None:
+         decision_transformer = f"./{variant['model_out']}/{decision_transformer}.pt"
+
     trainer = QuestionAnsweringTrainer(
         model,
         optimizer,
@@ -329,6 +333,7 @@ def qa_experiment(
         batch_size=variant["batch_size"],
         num_workers=variant["num_workers"],
         dataset=dataset,
+        decision_transformer=decision_transformer,
     )
     
     epochs = variant['max_iters']
@@ -383,6 +388,8 @@ if __name__ == '__main__':
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
     parser.add_argument('--random_map', '-mt' ,type=bool)
     parser.add_argument('--warmup_iterations' ,type=int, default=500)
+    parser.add_argument('--max_ep_length', "-len" ,type=int, default=50)
+    parser.add_argument('--load_dt', "-load" ,type=str)
 
     args = vars(parser.parse_args())
 

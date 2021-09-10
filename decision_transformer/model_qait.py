@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizerFast, BertModel
+from transformers import BertTokenizerFast, BertModel, BertForSequenceClassification
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -248,19 +248,19 @@ class QuestionAnsweringModule(nn.Module):
         self, 
         vocab_size, 
         hidden_size=64,
-        pretrained_model='bert-large-uncased', 
         context_window=200,
         question_type="location", 
-        **kwargs,
+        pretrained_model="bert",
+        **kwargs
     ):
         super(QuestionAnsweringModule,self).__init__()
         
-        self.pretrained_model = pretrained_model
         self.context_window = context_window
         self.question_type = question_type
+        self.pretrained_model = pretrained_model
 
         if self.pretrained_model == "bert":
-            self.model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True, **kwargs)
+            self.model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
             self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
 
         elif self.pretrained_model == "longformer":
@@ -295,10 +295,17 @@ class QuestionAnsweringModule(nn.Module):
 
         """
 
-        encoding = self.tokenizer(prompt_questions, max_length=self.context_window, truncation=True,padding='max_length',return_tensors='pt')    
+        encoding = self.tokenizer(
+            prompt_questions, 
+            max_length=self.context_window, 
+            truncation=True,padding='max_length',
+            add_special_tokens=True,
+            return_tensors='pt'
+        )
+
         output = self.model(input_ids=encoding['input_ids'].to(device=self.device),
                 attention_mask=encoding['attention_mask'].to(device=self.device))
-
+        
         return self.out(output["pooler_output"].to(device=self.device))
     
     def predict(self, states, question):
@@ -311,10 +318,9 @@ class QuestionAnsweringModule(nn.Module):
             else:
                 cleaned_states.extendleft(reversed(cleaned_state[int(-(len(cleaned_states) + len(cleaned_state) - self.context_window*0.9)):]))
                 break
-        
         text_prompt = " ".join(cleaned_states)
-        
-        answer_preds = self.forward([text_prompt +" [SEP] "+question])
+
+        answer_preds = self.forward(text_prompt +" [SEP] "+question)
         return torch.argmax(answer_preds[-1])
 
 class Trajectory(object):
