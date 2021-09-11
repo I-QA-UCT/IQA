@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from model_qait import DecisionTransformer, Trajectory, QuestionAnsweringModule
-
+from tqdm import tqdm
 from transformers import BertTokenizer
 
 from collections import defaultdict, deque
@@ -270,6 +270,11 @@ class QuestionAnsweringDataLoader(Dataset):
         if self.question_type == "existence":
             pattern = re.compile(r"is there any (.*?) in the world \?")
 
+        if decision_transformer is not None:
+            model = torch.load(decision_transformer,map_location=device)
+            model.eval()
+
+
         with open(offline_rl_data_filename) as offline_rl_data, open(word_encodings_filename) as word_encodings_data:
             
             self.dataset = []
@@ -278,14 +283,11 @@ class QuestionAnsweringDataLoader(Dataset):
             self.vocab_size = len(word_encodings)
 
 
-            for episode_no,sample_entry in enumerate(offline_rl_data):
+            for episode_no,sample_entry in enumerate(tqdm(offline_rl_data)):
 
                 episode = json.loads(sample_entry)
 
-                if decision_transformer is not None:
-                    
-                    model = torch.load(decision_transformer,map_location=device)
-                    model.eval()
+                if model:
                     
                     if self.question_type in ["existence","attribute"]:
                         answer = int(episode["answer"])
