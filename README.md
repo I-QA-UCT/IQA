@@ -1,6 +1,8 @@
 # QAIT Task Extension - Interactive Question Answering in Text-Based Environments
 --------------------------------------------------------------------------------
 Extension to Code for EMNLP 2019 paper "Interactive Language Learning by Question Answering".
+Implementation of policy-based agent using REINFORCE with baseline. 
+Implementation of ICM module to use as regularization technique for semantic encoding.
 
 ## To install dependencies
 ```
@@ -12,15 +14,12 @@ pip install numpy==1.16.4
 pip install https://github.com/Microsoft/TextWorld/archive/rebased-interactive-qa.zip
 pip install -U spacy
 python -m spacy download en
-pip install tqdm h5py visdom pyyaml
-conda install pytorch torchvision cudatoolkit=9.2 -c pytorch (Or later versions work fine)
-pip install gym==0.15.4 (Dependency Issue with Original Code)
-conda install h5py (Dependency Issue with Original Code)
-pip install wandb (Only for logging to wandb)
-pip install plotly (for plotting)
-pip install pandas (for plotting)
-pip install jsonlines (for plotting)
-pip install sklearn
+pip install tqdm pyyaml
+conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
+pip install gym==0.15.4
+conda install h5py 
+pip install wandb sklearn
+pip install plotly pandas jsonlines
 ```
 
 
@@ -34,11 +33,16 @@ Before first time running it, download fasttext crawl-300d-2M.vec.zip from [HERE
 ## To Train
 ```
 python train.py ./
+
+-d <location>
+-l <log to wandb>
 ```
 
 ## Citation
+If this is used, please give acknowledgements and cite the original QAit paper.
 
-Please use the following bibtex entry:
+The bibtex for the original QAit paper is:
+
 ```
 @article{yuan2019qait,
   title={Interactive Language Learning by Question Answering},

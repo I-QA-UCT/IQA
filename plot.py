@@ -1,3 +1,4 @@
+
 import plotly.express as px
 import jsonlines
 import pandas as pd
@@ -32,7 +33,9 @@ def read_file(filename):
         
 if __name__ == "__main__":
 
-    FILENAMES = ["../experiments/a2c_existence_500_random.json","../qaitlogs/DQN_Existence_rand1_seed123_size500.json","../qaitlogs/DDQN_Existence_rand1_seed123_size500.json","../qaitlogs/Rainbow_Existence_rand1_seed123_size500.json"]
+    QUESTION_TYPE="Attribute"
+    QA = False
+    FILENAMES = ["../experiments/a2c_"+QUESTION_TYPE.lower()+"_500_random.json","../qaitlogs/DQN_"+QUESTION_TYPE+"_rand1_seed321_size500.json","../qaitlogs/DDQN_"+QUESTION_TYPE+"_rand1_seed321_size500.json","../qaitlogs/Rainbow_"+QUESTION_TYPE+"_rand1_seed123_size500.json"]
     LINES = ["REINFORCE with baseline","DQN","DDQN","Rainbow"]
     
     SMOOTH = True
@@ -42,12 +45,12 @@ if __name__ == "__main__":
     for filename in FILENAMES:
         dataframes.append(read_file(filename))
     
-    fig = px.line(title="Training Sufficient Information")
+    fig = px.line(title="Training" + "Accuracy" if QA else 'Sufficient Information')
     fig.update_xaxes(title_text='Episodes')
-    fig.update_yaxes(title_text='Sufficient Information')
+    fig.update_yaxes(title_text='Accuracy' if QA else 'Sufficient Information')
     
     for i,dataframe in enumerate(dataframes):
-        fig.add_scatter(x=dataframe["Episode"],y=smoothTriangle(dataframe["sufficient info"],SMOOTHING_DEGREE) if SMOOTH else dataframe["sufficient info"],mode="lines",name=LINES[i])
+        fig.add_scatter(x=dataframe["Episode"],y=smoothTriangle(dataframe["qa" if QA else "sufficient info"],SMOOTHING_DEGREE) if SMOOTH else dataframe["qa" if QA else "sufficient info"],mode="lines",name=LINES[i])
    
     fig.show()
     

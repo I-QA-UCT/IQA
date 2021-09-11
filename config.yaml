@@ -2,8 +2,8 @@
 general:
   train_data_size: 1                  #-1 means unlimited games, where games are generated on the fly. In paper we use [1, 2, 10, 100, 500, -1], feel free to use any number.
   testset_path: "test_set"
-  random_map: True                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
-  question_type: "attribute"           # location, existence, attribute
+  random_map: False                    # If True, map size is sampled from [2, 12], if False, then map size is fixed to be 6.
+  question_type: "location"           # location, existence, attribute
   random_seed: 42                     # the secret of deep learning.
   naozi_capacity: 1                   # agent keeps this many history observations. In paper we do not use a size larger than 1, i.e., we do not keep history. Feel free to play with it, tho.
   use_cuda: False                     # disable this when running on machine without cuda
@@ -11,7 +11,7 @@ general:
 # Training Settings
 training:
   batch_size: 1                       # Number of games played in parallel
-  max_episode: 10000                 # Number of episodes to train
+  max_episode: 200000                 # Number of episodes to train
   learn_start_from_this_episode: 0    # Episodes of games played randomly to generate experience - only important for Value based methods
   target_net_update_frequency: 1000   # sync target net with online net per this many epochs - only important for Value based methods
   max_nb_steps_per_episode: 50        # after this many steps, a game is terminated
@@ -26,13 +26,13 @@ training:
 evaluate:
   run_eval: False                     # Run eval during training and save model by eval accuracy
   batch_size: 1
-  max_nb_steps_per_episode: 50        # after this many steps, a game is terminated
+  max_nb_steps_per_episode: 80        # after this many steps, a game is terminated
 
 checkpoint:
   save_checkpoint: True               # Save model checkpoints
   save_frequency: 1000                # episode
-  experiment_tag: 'a2c_attribute_500_random'
-  load_pretrained: True               # during test, enable this so that the agent load your pretrained model
+  experiment_tag: ''                  # name of experiment
+  load_pretrained: False               # during test, enable this so that the agent load your pretrained model
   load_from_tag: ''  # if you want to load from prev experiment
 
 replay:
@@ -61,7 +61,7 @@ double_dqn: False
 # Actor Critic Settings
 a2c:
   enable: True
-  entropy_coefficient: 0.05
+  entropy_coefficient: 0.05  # entropy coefficient used to weight entropy in loss
   condition_commands : True  # use previous word in command triplet to calculate next word
 
 # Intrinsic Curiosity Module Settings
@@ -74,12 +74,12 @@ icm:
   state_feature_size: 128     # if using feature net - size
   use_feature_net : False     # choice to use feature net or not
   inverse_action_weight: 1    # weight of inverse model action loss
-  inverse_modifier_weight: 0  # weight of inverse model modifier loss
-  inverse_object_weight: 0    # weight of inverse model object loss
+  inverse_modifier_weight: 1  # weight of inverse model modifier loss
+  inverse_object_weight: 1    # weight of inverse model object loss
   use_intrinsic_reward: False # use error as intrinsic motivation
   reward_scaling_factor: 0    # scale of error for reward
   inverse_reward: True        # use inverse models error as reward instead of forward model
-  condition_decoding: False   # use previous decoded word in decoding of future words in command triplet
+  condition_decoding: True   # use previous decoded word in decoding of future words in command triplet
  
   
 epsilon_greedy:
