@@ -485,8 +485,18 @@ class Agent:
             self.prev_actions.append(chosen_strings)
             return chosen_strings, replay_info
         
+    def answer_question_transformer(self, states, question, model):
+        
+        answer = model.predict(states,question)
 
-    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None, state_masks=None, action_masks=None):
+        if self.question_type == "location":
+            chosen_answer = self.word_vocab[answer]
+        elif self.question_type in ["attribute", "existence"]:
+            chosen_answer = str(answer.detach().cpu().item())
+
+        return chosen_answer
+
+    def act_decision_transformer(self, commands_per_step, timesteps, obs, input_observations,returns_to_go,model=None,state_masks=None, action_masks=None):
         """
         Acts upon the current list of observations.
         One text command must be returned for each observation.
