@@ -61,7 +61,7 @@ def evaluate(data_path, agent, variant, model=None):
             word_encodings = json.load(word_encodings_data)
         
         if model is None:
-            model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
+            model = torch.load(f"{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
         
 
         model.eval()
@@ -74,7 +74,7 @@ def evaluate(data_path, agent, variant, model=None):
         model = model.to(device=device)
 
         if qa_model is not None:
-            qa_model = torch.load(f"./{variant['model_dir']}/{variant['qa_model']}.pt",map_location=torch.device('cpu'))
+            qa_model = torch.load(f"{variant['model_dir']}/{variant['qa_model']}.pt",map_location=torch.device('cpu'))
             qa_model.eval()
             qa_model.device = device
             assert qa_model.question_type == agent.question_type, f"Incorrect question_type loaded from agent's config. Expected '{model.question_type}' but found '{agent.question_type}'."
