@@ -2,9 +2,11 @@ import argparse
 import torch
 import pickle
 import random
+import time
 
 import sys
 sys.path.insert(0, './decision_transformer')
+
 
 from model_qait import DecisionTransformer
 from trainer_qait import process_input
@@ -80,7 +82,7 @@ def evaluate(data_path, agent, variant, model=None):
             qa_model = qa_model.to(device=device)
 
         # Create randon numpy number generator for sampling reward.
-        np_rng = np.random.RandomState(agent.config["general"]["random_seed"] +  variant.get("iter_num",0))  # can be called without a seed
+        np_rng = np.random.RandomState(agent.random_seed +  variant.get("iter_num",0))  # can be called without a seed
 
     with open(eval_data_path) as f:
         data = json.load(f)
@@ -320,7 +322,65 @@ def evaluate(data_path, agent, variant, model=None):
         else:
             print(f"===== Eval =====: qa acc: {np.mean(print_qa_reward)} | bert qa acc {np.mean(print_qa_reward_bert)} | correct state: {np.mean(print_sufficient_info_reward)}")
     
-    return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
+    if not qa_model:
+        return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
+    else:
+        return np.mean(print_qa_reward), np.mean(print_qa_reward_bert), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
+
+def evaluate_all(data_path, variant):
+    
+    max_train = {
+        "fixed" : {"location" : 4.1 , "existence" : 3.8 , "attribute" : 3.73},
+        "random" : {"location" : 4.1 , "existence" : 3.94 , "attribute" : 4.03}
+    }
+
+    question_types = ["location", "attribute", "existence"]
+    random_map_types = [False, True]
+    
+    random_seeds = [42, 84, 168, 336, 672]
+
+    initial_rewards = [1,2,3,4,5,-1,"max_train"]
+    with open(f"{variant['model_out']}/eval_data.csv", "a") as out:
+        
+        print("question_type,random_map,rtg,bert_qa,dt_qa,suf_mean,suf_std,time,seed",file=out)
+
+        for seed in random_seeds:
+
+            for question_type in question_types:
+
+                for random_map in random_map_types:
+                    
+                    map_type = "random_map" if random_map else "fixed_map"
+                    variant["qa_model"] = f"{question_type}-500-{map_type}-qa-module"
+                    variant["model"] = f"{question_type}-500-{map_type}"
+
+                    for rtg in initial_rewards:
+                        
+                        agent = Agent()
+
+                        if rtg == "max_train":
+                            rtg = max_train["random" if random_map else "fixed"][question_type]
+                        
+                        agent.config["evaluate"]['initial_reward'] = rtg
+                        agent.random_map = random_map
+                        agent.question_type = question_type
+                        agent.eval_folder = pjoin(agent.testset_path, question_type, (map_type))
+                        agent.eval_data_path = pjoin(agent.testset_path, "data.json")
+                        agent.random_seed = seed
+                        np.random.seed(agent.random_seed)
+                        torch.manual_seed(agent.random_seed)
+
+                        start = time.time()
+                        dt_qa, bert_qa, suf_mean, suf_std = evaluate(data_path, agent, variant)
+
+                        end = time.time() - start
+
+                        print(f"{question_type},{random_map},{rtg},{bert_qa},{dt_qa},{suf_mean},{suf_std},{end},{seed}",file=out)
+
+
+
+            
+
 
 if (__name__ == "__main__"):
     agent = Agent()
@@ -346,6 +406,15 @@ if (__name__ == "__main__"):
                     default=None)
     parser.add_argument("--model_dir","-md",
                     default="decision_transformer/saved_models")
-    args = parser.parse_args()
+    parser.add_argument("--model_out","-mo",
+                    default="decision_transformer/training_logs")
+    parser.add_argument("--evaluate_all","-all", type=bool)
+    args = vars(parser.parse_args())
 
-    evaluate(agent=agent,data_path="./",variant=vars(args))
+    eval_all = args.get("evaluate_all",False)
+    
+    if eval_all:
+        evaluate_all(data_path="./", variant=args)
+    else:
+
+        evaluate(agent=agent,data_path="./",variant=args)
