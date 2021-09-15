@@ -15,6 +15,8 @@ import generic
 import reward_helper
 import copy
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import json
 from tqdm import tqdm
 from os.path import join as pjoin
@@ -50,39 +52,32 @@ def evaluate(data_path, agent, variant, model=None):
     eval_data_path = pjoin(data_path, agent.eval_data_path)
 
     decision_transformer = variant["decision_transformer"]
-
+    qa_model = variant['qa_model']
     if decision_transformer:
         # Loading in decision transformer for action prediction.
         with open("decision_transformer/data/word_encodings.json") as word_encodings_data:
             word_encodings = json.load(word_encodings_data)
         
         if model is None:
-            model = DecisionTransformer(
-                state_dim=180,
-                act_dim = 3,
-                max_length=50,
-                max_ep_len=50,
-                hidden_size=256,
-                n_layer=2,
-                n_head=8,
-                n_inner=4*256,
-                activation_function='tanh',
-                n_positions=1024,
-                resid_pdrop=0.4,
-                attn_pdrop=0.4,
-                bert_embeddings=False,
-                question_type="location"
-            )
             model = torch.load(f"./{variant['model_dir']}/{variant['model']}.pt",map_location=torch.device('cpu'))
         
+
         model.eval()
-        
+
         assert model.question_type == agent.question_type, f"Incorrect question_type loaded from agent's config. Expected '{model.question_type}' but found '{agent.question_type}'."
-        
+
 
         # Add model to cuda (if compatible)
         device = "cuda" if agent.use_cuda else "cpu"
         model = model.to(device=device)
+
+        if qa_model is not None:
+            qa_model = torch.load(f"./{variant['model_dir']}/{variant['qa_model']}.pt",map_location=torch.device('cpu'))
+            qa_model.eval()
+            qa_model.device = device
+            assert qa_model.question_type == agent.question_type, f"Incorrect question_type loaded from agent's config. Expected '{model.question_type}' but found '{agent.question_type}'."
+
+            qa_model = qa_model.to(device=device)
 
         # Create randon numpy number generator for sampling reward.
         np_rng = np.random.RandomState(agent.config["general"]["random_seed"] +  variant.get("iter_num",0))  # can be called without a seed
@@ -94,6 +89,8 @@ def evaluate(data_path, agent, variant, model=None):
 
     print_qa_reward, print_sufficient_info_reward = [], []
 
+    if qa_model:
+        print_qa_reward_bert = []
     # The number of episodes to be evaluated upon.
     num_eval_episodes = agent.config["evaluate"]["eval_nb_episodes"]
     
@@ -168,6 +165,7 @@ def evaluate(data_path, agent, variant, model=None):
             padded_command_history = []
             action_masks = []
 
+            states_history = []
             for step_no in range(agent.eval_max_nb_steps_per_episode):
                 # update answerer input
                 for i in range(batch_size):
@@ -185,13 +183,23 @@ def evaluate(data_path, agent, variant, model=None):
 
                 # Batch size of 1 for now
                 if decision_transformer:
-                    (processed_state, state_mask), (processed_command, action_mask) = process_input(state=observation_strings_w_history[-1], question=questions[q_no],command=commands_per_step[0][-1], sequence_length=model.state_dim, word2id=word_encodings, pad_token="<pad>", tokenizer=None)
+                    (processed_state, state_mask), (processed_command, action_mask) = process_input(
+                        state=observation_strings_w_history[-1], 
+                        question=questions[q_no],command=commands_per_step[0][-1], 
+                        sequence_length=model.state_dim, 
+                        word2id=word_encodings, 
+                        pad_token="<pad>", 
+                        tokenizer=None
+                    )
+                    
                     padded_state_history.append(processed_state)
                     padded_command_history.append(processed_command)
                     if state_mask and action_mask:
                         state_masks.append(state_mask)
                         action_masks.append(action_mask)
-
+                    
+                    states_history.append(observation_strings_w_history[-1])
+                    
                     commands, replay_info, answer = agent.act_decision_transformer(padded_command_history,list(range(step_no+1)),obs, padded_state_history, rewards,model=model)
 
                     if "wait" in commands:
@@ -245,12 +253,18 @@ def evaluate(data_path, agent, variant, model=None):
                 chosen_word_indices_np = generic.to_np(chosen_word_indices)
                 chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
             else:
+                if qa_model:
+
+                    chosen_answers_bert = [agent.answer_question_transformer(states_history,questions[q_no],qa_model)]
+                    qa_reward_np_bert = reward_helper.get_qa_reward(answers, chosen_answers_bert)
 
                 chosen_answers = [answer] #agent.qa_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model_qa)
 
             # rewards
             # qa reward
             qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
+
+            # print(f"Ans: {answers}, DT: {chosen_answers}, BERT: {chosen_answers_bert}")
             # sufficient info rewards
             masks = [item[-1] for item in transition_cache]
             masks_np = [generic.to_np(item) for item in masks]
@@ -286,13 +300,25 @@ def evaluate(data_path, agent, variant, model=None):
                 raise NotImplementedError
 
             r_qa = np.mean(qa_reward_np)
+
+            if qa_model:
+                r_qa_bert = np.mean(qa_reward_np_bert)
+                print_qa_reward_bert.append(r_qa_bert)
+
             r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
+            # print(f"===== Eval =====: qa acc: {np.mean(print_qa_reward)} | bert qa acc {np.mean(print_qa_reward_bert)} | correct state: {np.mean(print_sufficient_info_reward)}")
 
         env.close()
+    print("Initial reward:",agent.config["evaluate"]['initial_reward'])
+    # print("===== Eval =====: qa acc: {:2.3f} | bert qa acc {:2,3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_qa_reward_bert), np.mean(print_sufficient_info_reward)))
+
     if not agent.config["evaluate"]["silent"]:
-        print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))
+        if not qa_model:
+            print("===== Eval =====: qa acc: {:2.3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_sufficient_info_reward)))    
+        else:
+            print(f"===== Eval =====: qa acc: {np.mean(print_qa_reward)} | bert qa acc {np.mean(print_qa_reward_bert)} | correct state: {np.mean(print_sufficient_info_reward)}")
     
     return np.mean(print_qa_reward), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
 
@@ -316,6 +342,8 @@ if (__name__ == "__main__"):
                     default=True)
     parser.add_argument("--model","-m",
                     default="random_rollout")
+    parser.add_argument("--qa_model","-qa",
+                    default=None)
     parser.add_argument("--model_dir","-md",
                     default="decision_transformer/saved_models")
     args = parser.parse_args()
