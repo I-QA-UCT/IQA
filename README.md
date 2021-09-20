@@ -2,6 +2,14 @@
 --------------------------------------------------------------------------------
 Extension to Code for EMNLP 2019 paper "Interactive Language Learning by Question Answering".
 
+# Branches:
+### icm - TLDEDA001
+Contains policy-based agent and environment dynamics model code.
+### decision-transfer - FRMGRE001
+Contains decision transformer code.
+### gat_BERT - CHNROY002
+Contain GAT code.
+
 ## To install dependencies
 ```
 sudo apt update
