@@ -325,6 +325,7 @@ def train(data_path,log_to_wandb):
         
         ### End of action peforming loop - Now performs Question Answering
         
+        # Intrinsic Reward Calculation -- TLDEDA001
         if agent.icm and agent.use_intrinsic_reward:
            with torch.no_grad():
                 for b in range(batch_size):
@@ -345,7 +346,7 @@ def train(data_path,log_to_wandb):
                     intrinsic_reward = agent.online_net.curiosity_module.get_intrinsic_reward(encoded_current_state,encoded_action,encoded_next_state)
                                     
                     intrinsic_rewards.append(intrinsic_reward)
-
+        # Intrinsic Reward Calculation -- TLDEDA001
                        
 
         print(" / ".join(print_cmds))
@@ -410,13 +411,16 @@ def train(data_path,log_to_wandb):
         command_rewards_np = sufficient_info_reward_np + counting_rewards_np * game_running_mask.T * agent.revisit_counting_lambda + valid_command_rewards_np * game_running_mask.T * agent.valid_command_bonus_lambda  # batch x game step
         command_rewards = generic.to_pt(command_rewards_np, enable_cuda=agent.use_cuda, type="float")  # batch x game step
         
+        # Add rewards -- TLDEDA001
         if agent.icm and agent.use_intrinsic_reward:
             intrinsic_rewards = torch.stack(intrinsic_rewards)*generic.to_pt(game_running_mask.T,enable_cuda=agent.use_cuda) # batch x gamestep
             command_rewards = command_rewards+intrinsic_rewards
+        # TLDEDA001
 
         for i in range(command_rewards_np.shape[1]):
             transition_cache[i].append(command_rewards[:, i])
         print(command_rewards_np[0])
+        
         if agent.icm and agent.use_intrinsic_reward:
             if agent.use_cuda:
                 print(intrinsic_rewards[0].cpu().numpy())
@@ -425,6 +429,7 @@ def train(data_path,log_to_wandb):
 
                 
         # push command generation experience into replay buffer
+        ## Modified -- TLDEDA001
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
@@ -454,7 +459,8 @@ def train(data_path,log_to_wandb):
                         agent.command_generation_replay_memory.push(is_prior,prev_state_input[b],action_input[b],state_input[b],batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
                 if masks_np[i][b] == 0.0:
                     break
-
+        ## TLDEDA001
+        
         # for printing
         r_qa = np.mean(qa_reward_np)
         r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))

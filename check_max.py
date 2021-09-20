@@ -1,6 +1,8 @@
 import jsonlines
 import os
 
+# TLDEDA001
+
 def check_max(FILENAME,qa_weight=0.5):
     max = 0
     max_obj = None
@@ -42,4 +44,5 @@ def extract_dir_max(a_directory,qa_weight=0.5):
         print("===========================================================================")
 
 if __name__=="__main__":
-    extract_dir_max("../qaitlogs")
+    # extract_dir_max("../qaitlogs")
+    check_max("../experiments/attribute/500/a2c_attribute_500_random_w_semantics.json")

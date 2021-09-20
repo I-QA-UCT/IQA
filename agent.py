@@ -47,7 +47,7 @@ class Agent:
                 self.online_net.cuda()
                 self.target_net.cuda()
         else:
-            # Create the actor critic model
+            # Create the Policy agent
             self.online_net = ActorCritic(config=self.config,
                                           word_vocab=self.word_vocab,
                                           char_vocab=self.char_vocab,
@@ -278,7 +278,7 @@ class Agent:
             (batch_size,), dtype="float32")
         self.naozi.reset(batch_size=batch_size)
 
-
+    # Pad commands so that each command is always a triple
     def pad_commands(self,commands):
         padded_commands = []
         for command in commands:
@@ -451,7 +451,7 @@ class Agent:
 
     def choose_probability_command(self, action_ranks, word_mask=None):
         """
-        Generate a command by sampling from action probability distributions
+        Generate a command by sampling from action probability distributions -- TLDEDA001
         """
 
         action_indices = []
@@ -628,6 +628,7 @@ class Agent:
         :return chosen_strings: the list of commands for each game in batch.
         :return replay_info: contains the chosen word indices in vocab of commands generated and whether or not agents in the batch are still interacting.
         """
+        # if policy agent: -- TLDEDA001
         if self.a2c:
             batch_size = len(obs)
 
@@ -719,7 +720,7 @@ class Agent:
 
     def get_actor_critic_loss(self):
         """
-
+        Calculate policy agent loss -- tldeda001
         """
         
         data = self.command_generation_replay_memory.get_batch()
@@ -828,6 +829,7 @@ class Agent:
         next_input_observation, next_input_observation_char, _ = self.get_agent_inputs(
             next_obs_list)
 
+        # calculate ICM loss -- tldeda001
         if self.icm:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
             input_state,input_state_chars,_ = self.get_agent_inputs(obs_list)

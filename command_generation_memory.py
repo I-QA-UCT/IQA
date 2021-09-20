@@ -7,6 +7,7 @@ import torch
 Transition = namedtuple('Transition', ('state_input','action_input','next_state_input','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
 PolicyTransition = namedtuple('Transition', ('state_input','action_input','next_state_input','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward','state_value','action_log_probs','action_entropies' ,'is_final'))
 
+# New Memory Class for single episode -- TLDEDA001
 class SingleEpisodeStorage():
 
     def __init__(self):
@@ -43,7 +44,7 @@ class SingleEpisodeStorage():
             is_finals.append(is_final)
            
         return state_input_list,action_input_list,next_state_input_list,obs_list, quest_list, possible_words_list, word_indices_list, reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals
-
+# New Memory Class for single episode -- TLDEDA001
            
 
 class PrioritizedReplayMemory(object):
