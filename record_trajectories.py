@@ -343,7 +343,15 @@ def train(variant):
                 # record the trajectory as a part of the training.
                 if np.sum(sufficient_info_reward_np[b]) < variant["sufficient_information_threshold"]:
                     continue
-                trajectory = {"episode_no" : episode_no, "steps" : [], "question" : questions[0],"answer" : answers[0], "mask" : list(game_finishing_mask[:,0]) }
+                trajectory = {
+                    "episode_no" : episode_no, 
+                    "steps" : [], 
+                    "question" : questions[0],
+                    "answer" : answers[0], 
+                    "mask" : list(game_finishing_mask[:,0]),
+                    "entity" : reward_helper_info["_entities"][0],
+                    "attribute" : None if not reward_helper_info["_attributes"] else reward_helper_info["_attributes"][0],  
+                    }
 
                 agent.qa_replay_memory.push(False, qa_reward_np[b], answerer_input[b], questions[b], answers[b])
 

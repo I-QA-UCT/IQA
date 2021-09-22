@@ -19,6 +19,18 @@ RELATIVE_PATH = "decision_transformer/data/"
 WORD_ENCODINGS = RELATIVE_PATH + "word_encodings.json"
 
 def process_input(state, question, command, sequence_length, word2id, pad_token, tokenizer):
+    """
+    Input processing function. Takes in textual data and pads, truncuates, or tokenises it.
+
+    :param state: state to be tokenised
+    :param question: question that must be answered using the states. Concatenated to the end of state-strings.
+    :param command: the text command or action 
+    :param sequence_length: the maximum length of the state-string sequence. Used for tokenising
+    :param word2id: dictionary for converting words to ids
+    :param pad_token: token used for padding
+    :param tokenizer: used for tokenising state-strings. Can be none if BERT is not used for QA.
+    :returns: a tuple of tokenised states and actions. If BERT is used, can also return attention masks.
+    """
 
     def command_to_id(command):
         attn_mask = None
@@ -99,14 +111,6 @@ class JsonDataset(Dataset):
         self.tz = None if not use_bert else BertTokenizer.from_pretrained('bert-base-uncased')
         self.trajectories = self.load(RELATIVE_PATH + dataset, WORD_ENCODINGS)
         
-        # Shuffle data
-        # random.seed(42)
-        # random.shuffle(self.trajectories)
-        # correct_trajectories_ind = set([i for i in range(len(self.trajectories)) if self.trajectories[i]["total_reward"].item() >= 1])
-        # incorrct_traj_len =  round(len(correct_trajectories_ind)/correct_traj_prop * (1-correct_traj_prop))
-        # incorrect_trajectories_ind = set(islice((i for i in range(len(self.trajectories)) if i not in correct_trajectories_ind),round(incorrct_traj_len)))
-        # self.trajectories = [self.trajectories[i] for i in correct_trajectories_ind | incorrect_trajectories_ind]
-
     def __getitem__(self,index):
         return self.trajectories[index]
     
@@ -125,6 +129,7 @@ class JsonDataset(Dataset):
             word_encodings = json.load(word_encodings_data)
             commands = ["action","modifier","object"]
 
+            # if there is no tokenizer, use `<pad>` else use BERT tokeniser's `[PAD]` token for padding.
             PAD_tag = "[PAD]" if self.tz is not None else "<pad>"
 
             for episode_no,sample_entry in enumerate(offline_rl_data):
@@ -150,8 +155,6 @@ class JsonDataset(Dataset):
 
                 for game_step in episode["steps"]:
                     
-                    # game_step["state"].replace("<s>","").replace("</s>","").replace("<|>","")
-
                     # Get the action, modifier, object triple
                     command = game_step["command"]
                     act, mod, obj = command["action"], command["modifier"], command["object"]
@@ -248,7 +251,9 @@ class Trainer:
         return loss.detach().cpu().item()
 
 class QuestionAnsweringDataLoader(Dataset):
-    
+    """
+    Dataloader for QA model.
+    """
     def __init__(
         self,
         dataset,
@@ -265,7 +270,7 @@ class QuestionAnsweringDataLoader(Dataset):
         self.question_type = question_type
         self.context_window = context_window
         rng = random.Random(42)
-        balancer = 0 # used to cound the number of successful "Yes" trajectories in order to balance out presence of "Yes" and "No" trajectories.
+        balancer = 0 # used to count the number of successful "Yes" trajectories in order to balance out presence of "Yes" and "No" trajectories.
 
         if self.question_type == "existence":
             pattern = re.compile(r"is there any (.*?) in the world \?")
@@ -286,7 +291,7 @@ class QuestionAnsweringDataLoader(Dataset):
             for episode_no,sample_entry in enumerate(tqdm(offline_rl_data)):
 
                 episode = json.loads(sample_entry)
-
+                # If a DT is passed in, use final states it predicts to stop in as context window for QA
                 if model:
                     
                     if self.question_type in ["existence","attribute"]:
@@ -329,7 +334,7 @@ class QuestionAnsweringDataLoader(Dataset):
                                     break
                             text_prompt = " ".join(cleaned_states)
                             self.dataset.append((question, text_prompt, answer))
-
+                # If a DT is not passed in, heuristically select state-strings to train QA model on.
                 else:
                     if self.question_type in ["existence","attribute"]:
                         if self.question_type == "existence":
@@ -402,7 +407,6 @@ class QuestionAnsweringDataLoader(Dataset):
                             balancer -= 1
                         if cleaned_states:
                             text_prompt = " ".join(cleaned_states)
-                            print(answer,episode["question"],episode["entity"],text_prompt)
                             self.dataset.append((episode["question"], text_prompt, answer))
                             
 
@@ -452,10 +456,12 @@ class QuestionAnsweringTrainer(Trainer):
             decision_transformer
         )
         
+        # calculates the training and validation set sizes.
+        # context_window size used as random seed for splitting.
         train_size = round(len(qa_dataset)*0.8)
-        eval_size = len(qa_dataset) - train_size
+        val_size = len(qa_dataset) - train_size
         self.train_subset, self.val_subset = torch.utils.data.random_split(
-                qa_dataset, [train_size, eval_size], generator=torch.Generator().manual_seed(model.context_window))
+                qa_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(model.context_window))
 
         self.dataloader = DataLoader(dataset=self.train_subset, shuffle=True, batch_size=batch_size)
         self.val_loader = DataLoader(dataset=self.val_subset, shuffle=False, batch_size=batch_size)
@@ -502,7 +508,7 @@ class QuestionAnsweringTrainer(Trainer):
         for batch in self.val_loader:
 
             questions, prompts, answers = batch
-            output = self.model.forward([p +" "+ q for q,p in zip(questions,prompts)])
+            output = self.model.forward([p +" [SEP] "+ q for q,p in zip(questions,prompts)])
             answers_tensor = torch.tensor(answers,device=self.model.device)
             hits += (torch.argmax(output,dim=1) == answers_tensor).sum().detach()
 

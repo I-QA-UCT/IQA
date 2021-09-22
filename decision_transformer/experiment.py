@@ -1,3 +1,4 @@
+import os
 import sys
 sys.path.insert(0, './decision_transformer')
 sys.path.append(".")
@@ -51,14 +52,11 @@ def experiment(
     group_name = f'{exp_prefix}-{env_name}-{dataset}'
     exp_prefix = f'{group_name}-{random.randint(int(1e5), int(1e6) - 1)}'
 
-    # valid_env_names = set(['random_rollout','dqn_loc'])
     bert_embeddings = True if variant['embed_type'] == "bert" else False 
-    # if env_name in valid_env_names:
+    
     max_ep_len = variant["max_ep_length"]
-    env_targets = [3600, 1800]  # evaluation conditioning targets
     scale = 1.  # normalization for rewards/returns
-    # else:
-    #     raise NotImplementedError
+
     act_dim = 3 # act, mod, obj
     state_dim = variant["state_context_window"] # Number of tokens in the state string
 
@@ -66,8 +64,6 @@ def experiment(
         act_dim += 7 # Make the action dimension 10 if bert is used
         state_dim += 20 # Add 20 tokens to the state embedding if bert is used (for subword)
 
-    import os
-    # print("\n".join(os.listdir()))
     question_type = variant["question_type"]
     # load dataset
     dataset_filename = f'{dataset}.json'
@@ -81,7 +77,6 @@ def experiment(
     )
 
     # save all path information into separate lists
-    mode = "normal"
     states, traj_lens, returns,answers = [], [], [], []
     for path in trajectories:
         states.append(path['observations'])
@@ -156,13 +151,11 @@ def experiment(
             # padding and state + reward normalization
             tlen = s[-1].shape[1]
             s[-1] = np.concatenate([np.zeros((1, max_len - tlen, state_dim)), s[-1]], axis=1)
-            # s[-1] = (s[-1] - state_mean) / state_std
             a[-1] = np.concatenate([np.ones((1, max_len - tlen, act_dim)), a[-1]], axis=1)
             r[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), r[-1]], axis=1)
             ans[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), ans[-1]], axis=1)
             rtg[-1] = np.concatenate([np.zeros((1, max_len - tlen, 1)), rtg[-1]], axis=1) / scale
             timesteps[-1] = np.concatenate([np.zeros((1, max_len - tlen)), timesteps[-1]], axis=1)
-            # Add in masks from trajectory object?
             mask.append(np.concatenate([np.zeros((1, max_len - tlen)), np.ones((1, tlen))], axis=1))
             
             if state_mask and action_mask:
@@ -256,7 +249,6 @@ def experiment(
             project='decision-transformer',
             config=variant
         )
-        # wandb.watch(model)  # wandb has some bug
     
     print("========== Beginning Training ==========\n")
     min_loss = float("inf")

@@ -47,9 +47,19 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def evaluate(data_path, agent, variant, model=None):
+def evaluate(data_path : str, agent : Agent, variant : dict , model=None) -> tuple:
     """
-    Evaluate an agent on a test set
+    Evaluate an agent on a set of online TextWorld games for the QAit task.
+
+    :param data_path: The working directory of the dataset.
+    :param agent: The agent that will be interacting in TextWorld. Used also for config file.
+    :param variant: command line arguments supplied to evaluate's main method parsed into a dictionary for accessing.
+    :param model: external model that is passed in to evaluate function. Used mainly for decision transformer validation set.
+    :returns: tuple of QA accuracy and sufficient information score of agent/model on test/validation set.
+    :raises AssertionError: If a model is loaded in and has a different question type to the config file.
+    :raises NotImplementedError:    (1) If a question type is not location, existence, or attribute. 
+                                    (2) If the number of episodes to played is not between 1-500. 
+                                    (3) If the specified reward type is not -1 OR greater than 0. 
     """
     eval_data_path = pjoin(data_path, agent.eval_data_path)
 
@@ -73,10 +83,12 @@ def evaluate(data_path, agent, variant, model=None):
         device = "cuda" if agent.use_cuda else "cpu"
         model = model.to(device=device)
 
+        # if a QA model is passed to the evaluate function, load it in.
         if qa_model is not None:
             qa_model = torch.load(f"{variant['model_dir']}/{variant['qa_model']}.pt",map_location=torch.device('cpu'))
             qa_model.eval()
             qa_model.device = device
+            # if the QA model has a different question type to that of the config file, throw an assertion exception.
             assert qa_model.question_type == agent.question_type, f"Incorrect question_type loaded from agent's config. Expected '{model.question_type}' but found '{agent.question_type}'."
 
             qa_model = qa_model.to(device=device)
@@ -91,6 +103,7 @@ def evaluate(data_path, agent, variant, model=None):
 
     print_qa_reward, print_sufficient_info_reward = [], []
 
+    # if a seperate QA model is loaded in, create a list that will store its answer predictions.
     if qa_model:
         print_qa_reward_bert = []
     # The number of episodes to be evaluated upon.
@@ -155,12 +168,10 @@ def evaluate(data_path, agent, variant, model=None):
             if agent.config["evaluate"]['initial_reward'] > 0: 
                 initial_reward = agent.config["evaluate"]['initial_reward']
             elif agent.config["evaluate"]['initial_reward'] == -1:    
-                # if agent.question_type == "location":
-
                 initial_reward = np_rng.exponential(0.4)+1
             else:
                 raise NotImplementedError
-            # print(initial_reward)
+
             rewards = [[initial_reward]] # batch x reward x timestep
             padded_state_history = []
             state_masks = []
@@ -183,7 +194,7 @@ def evaluate(data_path, agent, variant, model=None):
                 observation_strings_w_history = agent.naozi.get()
                 input_observation, input_observation_char, _ =  agent.get_agent_inputs(observation_strings_w_history)
 
-                # Batch size of 1 for now
+                # Batch size of 1
                 if decision_transformer:
                     (processed_state, state_mask), (processed_command, action_mask) = process_input(
                         state=observation_strings_w_history[-1], 
@@ -223,6 +234,10 @@ def evaluate(data_path, agent, variant, model=None):
                 
                 reward_helper_info["observation_before_finish"] = agent.naozi.get()
 
+                # Reward needs to be given while the DT is interacting in TextWorld.
+                # functions from reward_helper are edited to allow for intermediate 
+                # rewards to be calculated and given.
+
                 if agent.question_type == "location":
                     sufficient_info_reward_np = reward_helper.get_sufficient_info_reward_location_during(reward_helper_info)
                 elif agent.question_type == "attribute":
@@ -255,18 +270,18 @@ def evaluate(data_path, agent, variant, model=None):
                 chosen_word_indices_np = generic.to_np(chosen_word_indices)
                 chosen_answers = [agent.word_vocab[item] for item in chosen_word_indices_np]
             else:
+                # if we passed in a QA model, use it to answer question.
                 if qa_model:
 
                     chosen_answers_bert = [agent.answer_question_transformer(states_history,questions[q_no],qa_model)]
                     qa_reward_np_bert = reward_helper.get_qa_reward(answers, chosen_answers_bert)
-
-                chosen_answers = [answer] #agent.qa_decision_transformer(padded_command_history,[step_no],obs, padded_state_history, counting_rewards,model=model_qa)
+                # make the chosen answer the final answer prediction of the DT.
+                chosen_answers = [answer]
 
             # rewards
             # qa reward
             qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
 
-            # print(f"Ans: {answers}, DT: {chosen_answers}, BERT: {chosen_answers_bert}")
             # sufficient info rewards
             masks = [item[-1] for item in transition_cache]
             masks_np = [generic.to_np(item) for item in masks]
@@ -313,8 +328,6 @@ def evaluate(data_path, agent, variant, model=None):
             # print(f"===== Eval =====: qa acc: {np.mean(print_qa_reward)} | bert qa acc {np.mean(print_qa_reward_bert)} | correct state: {np.mean(print_sufficient_info_reward)}")
 
         env.close()
-    print("Initial reward:",agent.config["evaluate"]['initial_reward'])
-    # print("===== Eval =====: qa acc: {:2.3f} | bert qa acc {:2,3f} | correct state: {:2.3f}".format(np.mean(print_qa_reward), np.mean(print_qa_reward_bert), np.mean(print_sufficient_info_reward)))
 
     if not agent.config["evaluate"]["silent"]:
         if not qa_model:
@@ -328,7 +341,9 @@ def evaluate(data_path, agent, variant, model=None):
         return np.mean(print_qa_reward), np.mean(print_qa_reward_bert), np.mean(print_sufficient_info_reward), np.std(print_sufficient_info_reward)
 
 def evaluate_all(data_path, variant):
-    
+    """
+    Evaluates multiple configurations and writes results/data to a logs file. 
+    """
     max_train = {
         "fixed" : {"location" : 4.1 , "existence" : 3.8 , "attribute" : 3.73},
         "random" : {"location" : 4.1 , "existence" : 3.94 , "attribute" : 4.03}

@@ -330,7 +330,6 @@ def get_sufficient_info_reward_attribute_during(reward_helper_info):
     answers = reward_helper_info["answers"]
     game_facts_per_step = reward_helper_info["game_facts_per_step"]  # batch x game step+1
     commands_per_step = reward_helper_info["commands_per_step"]  # batch x game step+1
-    # game_finishing_mask = reward_helper_info["game_finishing_mask"]  # game step x batch size
     rewards = []
     coverage_rewards = []
     seen_entity_reward = []

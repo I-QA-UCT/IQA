@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import BertTokenizerFast, BertModel, BertForSequenceClassification
+from transformers import BertTokenizerFast, BertModel, LongformerModel, LongformerTokenizerFast
 from transformers import GPT2Config
 from trajectory_gpt2 import GPT2Model
 
@@ -58,9 +58,10 @@ class DecisionTransformer(nn.Module):
         self.embed_return = torch.nn.Linear(1, hidden_size)
 
         self.word_embedding = torch.nn.Embedding(self.vocab_size,hidden_size)
-        # When done try embeddig actions seperately
 
-        # Single GRU for action and state
+        # Single GRU for action and state.
+        # If BERT is used for embedding, set the hidden size to 768 (default BERT size) else, 
+        # use the passed in hidden size.
         self.encoder = torch.nn.GRU(768 if self.bert_embeddings else hidden_size,hidden_size,batch_first=True)
         
         # BERT for encoding
@@ -68,11 +69,12 @@ class DecisionTransformer(nn.Module):
 
         self.embed_ln = nn.LayerNorm(hidden_size)
         
-        # if answer_question: # Should we test scores if answer prediction didn't matter?
+        # If location type question, answer prediction will be calculated over the entire vocab.
         if self.question_type == "location":
             self.predict_answer = nn.Sequential(
                 *([nn.Linear(hidden_size, self.vocab_size)])
             )
+        # If existence or attribute, answer prediction will be of size 2, either 1 (yes) or 0 (no).
         elif self.question_type in ["existence", "attribute"]:
             self.predict_answer = nn.Sequential(
                 *([nn.Linear(hidden_size, 2)])
@@ -80,6 +82,7 @@ class DecisionTransformer(nn.Module):
         else:
             raise NotImplementedError
         
+        # action, modifier, and object prediction heads. Predictions to be softmaxed over the entire vocab.
         self.predict_action = nn.Sequential(
                 *([nn.Linear(hidden_size, self.vocab_size)])
             )
@@ -92,8 +95,12 @@ class DecisionTransformer(nn.Module):
             *([nn.Linear(hidden_size, self.vocab_size)])
         )
         
-    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None, state_mask=None, action_mask=None, device="cuda"):
+    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None, state_mask=None, action_mask=None, device="cuda") -> tuple:
+        """
+        Forward propagation method for Decision Transformer. Takes in a tensor of states, actions, rewards, returns_to_go
+        and timesteps for action generation. Attention masks are also passed in.
 
+        """
         batch_size, seq_length = states.shape[0], states.shape[1]
         # word masks - possible words for decoder and then use masked softmax to get actual distribution
 
@@ -107,6 +114,8 @@ class DecisionTransformer(nn.Module):
         # embed each modality with a different
         # Embded state with GRU
         encoded_states = []
+        
+        # Either embed state tokens with BERT or use seperate word_embedding layer
         if self.bert_embeddings:
             state_word_embeddings = []
             for batch in range(len(states[0])):
@@ -121,7 +130,8 @@ class DecisionTransformer(nn.Module):
             encoded_states.append(encoded_state[:,-1,:])
         
         encoded_state=torch.stack(encoded_states)
-
+        
+        # Either embed action tokens with BERT or use seperate word_embedding layer
         encoded_actions = []
         if self.bert_embeddings:
             action_word_embeddings = []
@@ -171,32 +181,42 @@ class DecisionTransformer(nn.Module):
         # reshape x so that the second dimension corresponds to the original
         # returns (0), states (1), or actions (2); i.e. x[:,1,t] is the token for s_t
         x = x.reshape(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
-        
-        # Allow for modifier and object preds to use action?
-        # Allow for answer preds to use entire sequence x instead of just state?
 
         return self.predict(x)
 
-    def predict(self, encoded_sequence):
+    def predict(self, encoded_sequence) -> tuple:
         
         """
         Function that takes in the GRU encoded sequence and returns predictions. 
+        :param encoded_sequence: Transformer output for a particular timestep t.
+        :returns: tuple consisting of embedding vectors for the action, modifier, and object of command as well the predicted answer.
         """
         encoded_returns, encoded_states, encoded_actions = encoded_sequence[:,0],encoded_sequence[:,1],encoded_sequence[:,2]
         
-        answer_preds = self.predict_answer(encoded_states) # predict answer
+        answer_preds = self.predict_answer(encoded_states) # predict answer given state
         action_preds = self.predict_action(encoded_states)  # predict next action given state
-        modifier_preds = self.predict_modifer(encoded_states)  # predict next action given state
-        object_preds = self.predict_object(encoded_states)  # predict next action given state
+        modifier_preds = self.predict_modifer(encoded_states)  # predict next modifier given state
+        object_preds = self.predict_object(encoded_states)  # predict next object given state
 
         return action_preds, modifier_preds, object_preds, answer_preds
 
 
     def get_command(self, states, actions, returns_to_go, timesteps, state_mask, action_mask, device="cpu",**kwargs):
+        """
+        Uses the Decision Transformer model to predict an action, modifier, object triple as well as an answer prediction. 
 
+        :param states: list of tokenised states for each timestep t
+        :param actions: list of tokenised actions for each timestep t
+        :param returns_to_go: list of returns_to_go for each timestep t
+        :param timesteps: list of timesteps for positional embedding
+        :param state_mask: attention mask for states
+        :param action_mask: attention mask for actions
+        :param device: the device with which the tensors will be stored (`cuda` or `cpu`)
+        :param `**kwargs`: key word arguments used for DT's forward method.
+        """
         if state_mask and action_mask:
             state_masks = torch.Tensor(state_mask).reshape(1, -1, self.state_dim).long().to(dtype=torch.long, device=device)
-            action_masks = torch.Tensor(action_mask).reshape(1, -1, self.state_dim).long().to(dtype=torch.long, device=device)
+            action_masks = torch.Tensor(action_mask).reshape(1, -1, self.act_dim).long().to(dtype=torch.long, device=device)
         else:
             state_masks = None
             action_masks = None
@@ -205,44 +225,20 @@ class DecisionTransformer(nn.Module):
         returns_to_go = torch.Tensor(returns_to_go).reshape(1, -1, 1).to(device=device)
         timesteps = torch.Tensor(timesteps).reshape(1, -1).long().to(dtype=torch.long, device=device)
 
-        # if self.max_length is not None:
-        #     states = states[:,-self.max_length:]
-        #     actions = actions[:,-self.max_length:]
-        #     returns_to_go = returns_to_go[:,-self.max_length:]
-        #     timesteps = timesteps[:,-self.max_length:]
-
-        #     # pad all tokens to sequence length
-        #     attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
-        #     attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
-        #     states = torch.cat(
-        #         [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
-        #         dim=1).to(dtype=torch.long)
-        #     actions = torch.cat(
-        #         [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
-        #                      device=actions.device), actions],
-        #         dim=1).to(dtype=torch.long)
-        #     returns_to_go = torch.cat(
-        #         [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
-        #         dim=1).to(dtype=torch.float32)
-        #     timesteps = torch.cat(
-        #         [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
-        #         dim=1
-        #     ).to(dtype=torch.long)
-        # else:
         attention_mask = None
             
         action_preds, modifier_preds, object_preds, answer_pred = self.forward(
             states, actions, None, returns_to_go, timesteps, attention_mask=None, state_mask=state_masks, action_mask=action_masks, device=device, **kwargs)
 
+        # As discussed in the paper, word for actions, modifiers, and objects are sampled from a probability
+        # distribution as opposed to the index corresponding to the highest logit being returned. 
         softmax = nn.Softmax(dim=0)
         action_dist = torch.distributions.categorical.Categorical(softmax(action_preds[-1,-1]))
         modifier_dist = torch.distributions.categorical.Categorical(softmax(modifier_preds[-1,-1]))
         object_dist = torch.distributions.categorical.Categorical(softmax(object_preds[-1,-1]))
-
+        
         return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
         
-
-
 class QuestionAnsweringModule(nn.Module):
     def __init__(
         self, 
@@ -292,7 +288,9 @@ class QuestionAnsweringModule(nn.Module):
     
     def forward(self, prompt_questions):
         """
+        Forward method for QA model.
 
+        :param prompt_questions: list of questions and text pairs used for question-answering.  
         """
 
         encoding = self.tokenizer(
@@ -309,8 +307,21 @@ class QuestionAnsweringModule(nn.Module):
         return self.out(output["pooler_output"].to(device=self.device))
     
     def predict(self, states, question):
-        
-        cleaned_states = deque()
+        """
+        Answer prediction method for QA model. 
+        Cleans the state-string of all unnessesary symbols and truncates it to 90% of the context_window.
+        This is due to certain words being broken up into multiple tokens when using the BERT tokeniser
+        nessecitating the context window not be filled up.
+
+        :param states: list of state-strings
+        :param question: question that needs to be answered using list of state-strings as context.
+        :returns: index from vocab of expected answer.
+        """
+
+        # This algorithm appends each state-string to a deque starting from the
+        # last state observed to the first state observed. The aim of such a function
+        # is to create a context string combining the last state observed with the maximum
+        # amount of previous state strings that the context_window allows for.
         for state in reversed(states):
             cleaned_state = state.replace("<s>","").replace("</s>","").replace("<|>","").replace("<pad>","").split()
             if len(cleaned_states) + len(cleaned_state) < self.context_window*0.9:
@@ -324,6 +335,9 @@ class QuestionAnsweringModule(nn.Module):
         return torch.argmax(answer_preds[-1])
 
 class Trajectory(object):
+    """
+    Trajectory object. Used to store information about offline reinforcement learning trajectories.
+    """
 
     def __init__(self):
         self.trajectory = defaultdict(list)
