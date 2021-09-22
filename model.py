@@ -554,7 +554,7 @@ class ActorCritic(torch.nn.Module):
                 self.question_answerer_output_1.zero_noise()
                 self.question_answerer_output_2.zero_noise()
 
-##TLDEDA001
+##TLDEDA001 - Inverse Model for ICM
 class ICM_Inverse(torch.nn.Module):
     """
     ICM - Inverse Model - used to predict action from two consecutive states. This enables the feature model to learn a valuable feature representation.
@@ -604,7 +604,7 @@ class ICM_Inverse(torch.nn.Module):
         
         return action_dist,modifier_dist,object_dist
 
-##TLDEDA001
+##TLDEDA001 - Forward Model for ICM
 class ICM_Forward(torch.nn.Module):
 
     def __init__(self, input_size, hidden_size, feature_size):
@@ -622,7 +622,7 @@ class ICM_Forward(torch.nn.Module):
         
         return self.forward_net(input)
 
-##TLDEDA001
+##TLDEDA001 - Feature Net for ICM
 class ICM_Feature(torch.nn.Module):
 
     def __init__(self, state_embedding_size, hidden_size, feature_size):
@@ -641,7 +641,7 @@ class ICM_Feature(torch.nn.Module):
         
         return self.feature_net(state)
 
-##TLDEDA001
+##TLDEDA001 - Combined Module
 class ICM(torch.nn.Module):
     """
     Intrinsic Curiosity Module - used to instill curiosity into agent.

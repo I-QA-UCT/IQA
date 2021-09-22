@@ -29,6 +29,7 @@ class Agent:
         self.load_config()
 
         if not self.a2c:
+            # Create DQN
             self.online_net = DQN(config=self.config,
                                   word_vocab=self.word_vocab,
                                   char_vocab=self.char_vocab,
@@ -278,8 +279,13 @@ class Agent:
             (batch_size,), dtype="float32")
         self.naozi.reset(batch_size=batch_size)
 
-    # Pad commands so that each command is always a triple
+    # TLDEDA001
     def pad_commands(self,commands):
+        """
+        Pad commands with words not IDs to be of size three
+        :param commands: list of commands
+        :return padded_commands: list of padded_commands.
+        """
         padded_commands = []
         for command in commands:
             padded_command = command
@@ -412,7 +418,7 @@ class Agent:
 
     def get_match_representations(self, input_observation, input_observation_char, input_quest, input_quest_char, use_model="online"):
         """
-        This encodes words and chars and aggregates them into the current models state
+        This encodes words and chars and aggregates them into the current state representation
         """
         model = self.online_net if use_model == "online" else self.target_net
         description_representation_sequence, description_mask = model.representation_generator(
@@ -452,11 +458,14 @@ class Agent:
     def choose_probability_command(self, action_ranks, word_mask=None):
         """
         Generate a command by sampling from action probability distributions -- TLDEDA001
+        :param action_ranks: probability distributions of words in command triple.
+        :return: action_indices - word ids for selected actions. action_log_probs- log probability of selected actions. action_entropies - entropies of probability distributions
         """
 
         action_indices = []
         action_log_probs = []
         action_entropies = []
+        
         for i in range(len(action_ranks)):
             batch_log_probs = []
             ar = action_ranks[i]
@@ -550,7 +559,8 @@ class Agent:
 
     def act_random(self, obs, infos, input_observation, input_observation_char, input_quest, input_quest_char, possible_words):
         """
-        choose and action randomly
+        choose an action randomly.
+        :return chosen_strings and game information.
         """
         with torch.no_grad():
             batch_size = len(obs)
@@ -737,6 +747,7 @@ class Agent:
 
         finals_mask = (1-to_pt(np.array(is_finals, dtype=bool), self.use_cuda))
         
+        # If using ICM - calculate icm loss
         if self.icm:
             input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
             input_state,input_state_chars,_ = self.get_agent_inputs(obs_list)

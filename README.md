@@ -4,6 +4,25 @@ Extension to Code for EMNLP 2019 paper "Interactive Language Learning by Questio
 Implementation of policy-based agent using REINFORCE with baseline. 
 Implementation of ICM module to use as regularization technique for semantic encoding.
 
+## Created Files
+- check_max.py - used for checking training logs to find saved model and best results
+
+- plot.py - used for plotting training curves
+
+## Modified Files
+- model.py - added ActorCritic, ICM_Inverse, ICM_Forward, ICM_Feature, and ICM classes. ActorCritic is the policy and baseline networks. All the ICM classes are used for the environment dynamics model. 
+
+- command_generation_memory.py - add single episode memory storage to not involve the shuffling and batching of data and just store a single episode of data.
+
+- evaluate.py - add other accuracy metrics including F1 score, precision, and recall.
+
+- agent.py - Add methods to make use of ActorCritic and ICM Classes. This includes action selection, policy and baseline network updates, ICM network updates.
+
+- train.py - add code to make new agent supported. This includes new storage of relevant data, calculation of intrinsic rewards, update method for agent depending on architecture selected.
+
+## Running Changes
+Alot of effort went into making all the original code unchanged with regards to execution and due to this all code is implemented with respect to the config file meaning all new changes and modifications can simply be turned off and the original methods can run. All changes are implemented in conjunction with existing code so mixing and matching methods are possible within the config file.
+
 ## To install dependencies
 ```
 sudo apt update
@@ -22,7 +41,6 @@ pip install wandb sklearn
 pip install plotly pandas jsonlines
 ```
 
-
 ## Test Set
 Download the test set from [https://aka.ms/qait-testset](https://aka.ms/qait-testset). Unzip it.
 
@@ -34,8 +52,8 @@ Before first time running it, download fasttext crawl-300d-2M.vec.zip from [HERE
 ```
 python train.py ./
 
--d <location>
--l <log to wandb>
+-d <training location> (just use "./")
+-l <flag to log to wandb> (requires logging into wandb)
 ```
 
 ## Citation
