@@ -257,6 +257,7 @@ class DQN(torch.nn.Module):
     def answer_question(self, matching_representation_sequence, doc_mask):
         """
         Answer question based on representation
+
         :return prediction distribution.
         """
         square_mask = torch.bmm(doc_mask.unsqueeze(-1),
@@ -439,6 +440,9 @@ class ActorCritic(torch.nn.Module):
             
 
     def get_match_representations(self, doc_encodings, doc_mask, q_encodings, q_mask):
+        """
+        Run embeddings through transformers and return transformed sequence.
+        """
         # node encoding: batch x num_node x hid
         # node mask: batch x num_node
         X = self.context_question_attention(
@@ -453,6 +457,14 @@ class ActorCritic(torch.nn.Module):
         return M0
 
     def representation_generator(self, _input_words, _input_chars):
+        """
+        Run word ids and char ids through embeddings and merge them.
+
+        :param _input_words: word ids.
+        :param _input_chars: char ids.
+
+        :return: merged embedding sequence.
+        """
         embeddings, mask = self.word_embedding(
             _input_words)  # batch x time x emb
         char_embeddings, _ = self.char_embedding(
@@ -469,6 +481,10 @@ class ActorCritic(torch.nn.Module):
 
     def action_scorer(self, state_representation_sequence, word_masks):
         """
+        Get probability distributions and state value by using state representation.
+
+        :param state_representation_sequence: the state representation.
+        :param word_masks: the mask to use for softmax - consists of possible words agent can use.
 
         :return action_probs: three probability distributions for each word in the action triplet.
         :return value: the critics state value.
@@ -509,6 +525,7 @@ class ActorCritic(torch.nn.Module):
     def answer_question(self, matching_representation_sequence, doc_mask):
         """
         Answer question based on representation
+
         :return prediction distribution.
         """
         square_mask = torch.bmm(doc_mask.unsqueeze(-1),
@@ -693,8 +710,10 @@ class ICM(torch.nn.Module):
     def get_predicted_action(self, state, next_state):
         """
         Use the inverse model to get the predicted action.
+
         :param state: the current state.
         :param next_state: the next state.
+
         :return : vocab distributions for action, modifier, object
         """
         # Using Feature Net
@@ -713,8 +732,10 @@ class ICM(torch.nn.Module):
         """
 
         Use the forward model to predict the next state's feature representation.
+
         :param state: the current state.
         :param action: the action performed.
+
         :return : the feature representation of the predicted next state.
         """
         # Using FeatureNet
@@ -730,9 +751,11 @@ class ICM(torch.nn.Module):
         """
         
         Get the loss of the inverse model.
+
         :param state: the current state.
         :param action: the action performed.
         :param next_state: the next state after action.
+
         :return : Inverse models loss
 
         """
@@ -752,9 +775,11 @@ class ICM(torch.nn.Module):
     def get_forward_loss(self, state, action, next_state):
         """
         Get the loss of the forward model. This is the difference between the actual next state feature and the predicted next state feature.
+        
         :param state: the current state.
         :param action: the action performed.
         :param next_state: the next state after action.
+
         :return : MSE loss of the forward model.
         """
         if self.use_feature_net:
@@ -770,9 +795,11 @@ class ICM(torch.nn.Module):
     def get_intrinsic_reward(self, state, action, next_state):
         """
         Calculate the intrinsic reward.
+
         :param state: the current state.
         :param action: the action performed.
         :param next_state: the next state after action.
+        
         :return : the intrinsic reward.
         """
         with torch.no_grad():

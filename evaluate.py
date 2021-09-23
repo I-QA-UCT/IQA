@@ -31,7 +31,11 @@ request_infos = textworld.EnvInfos(description=True,
                                    admissible_commands=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
+# TLDEDA001
 def get_answer_dist(data_path="./",random_map=True,question_type='existence'):
+    """
+    Get the distributin of answers in the test set and print it.
+    """
    
     eval_data_path = pjoin(data_path, "test_set/data.json")
 

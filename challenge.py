@@ -3,12 +3,6 @@
 
 
 """
-.. _interactive_QA:
-
-Interactive QA
-==============
-
-TODO
 
 Settings
 --------
@@ -17,11 +11,6 @@ Settings
     * nb_entities (int): Number of entities (rooms + fixed in place + portable).
     * seed_map (int): Fix the random seed for the map generation.
     * with_placeholders (bool): Add as many placeholders as need to cover all possible attributes.
-
-References
-----------
-TODO
-
 """
 
 import re

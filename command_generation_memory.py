@@ -21,7 +21,10 @@ class SingleEpisodeStorage():
         self.batch_episode_memory = []
 
     def get_batch(self):
-        
+        """
+        Get the single episode experience.
+        :return : a list of all information and data needed for policy agent.
+        """
         state_input_list,action_input_list,next_state_input_list,obs_list, quest_list, possible_words_list, word_indices_list,reward_list, state_values ,action_log_probs_list,action_entropies_list,is_finals = [], [], [], [],[],[],[],[],[],[],[],[]
     
         for item in self.batch_episode_memory:
