@@ -93,7 +93,15 @@ def process_input(state, question, command, sequence_length, word2id, pad_token,
     return state_question_to_id(state,question,sequence_length), command_to_id(command)
 
 class JsonDataset(Dataset):
+    """
+    Dataset object used for storing all trajectory objects. 
 
+    :param dataset: name of dataset to be used for training
+    :param sentence_length: length of the state-string context window used for action generation and answer prediction
+    :param max_episodes: the maximum length of a trajectory
+    :param use_bert: determine whether to use BERT for tokenising
+    :param question_type: question type of data being loaded in
+    """
     def __init__(
         self, 
         dataset,
@@ -177,7 +185,17 @@ class JsonDataset(Dataset):
         return trajectories
 
 class Trainer:
+    """
+    Trainer parent class.
 
+    :param model: model to be trained
+    :param optimizer: optimizer to be used for training. Weights and decay determined before passing.
+    :param loss_fn: loss function to be used
+    :param batch_size: batch size
+    :param get_batch: method used for processing batches of data into correct format.
+    :param scheduler: scheduler to be used when training
+    :eval_fns: set of functions used to evaluate model at specific timesteps.
+    """
     def __init__(self, model, optimizer, batch_size, get_batch, loss_fn, scheduler=None, eval_fns=None):
         self.model = model
         self.optimizer = optimizer
@@ -233,6 +251,11 @@ class Trainer:
         return logs
 
     def train_step(self):
+        """
+        Method for running the DT on a single batch and calculating loss.
+
+        :returns: loss of DT when attempting to predict state, reward, and action
+        """
         states, actions, rewards, attention_mask, returns = self.get_batch(self.batch_size)
         state_target, action_target, reward_target = torch.clone(states), torch.clone(actions), torch.clone(rewards)
 
@@ -252,7 +275,15 @@ class Trainer:
 
 class QuestionAnsweringDataLoader(Dataset):
     """
-    Dataloader for QA model.
+    Dataloader object used to store state-strings when training QA model. 
+
+    :param dataset: name of dataset to be used for training
+    :param context_window: length of the state-string context window used for question answering
+    :param model_type: the type of QA model to be trained. Either 'longformer' or 'bert'
+    :param use_bert: determine whether to use BERT for tokenising
+    :param question_type: question type of data being loaded in
+    :param decision_transformer: Decision Transformer model used for determining training set (see paper).
+
     """
     def __init__(
         self,
@@ -434,12 +465,29 @@ class QuestionAnsweringDataLoader(Dataset):
 
     
 class QuestionAnsweringTrainer(Trainer):
+    """
+    Trainer class for QA model. Training set can either be determined using Decision Transformer (1) or heuristically (2).
+    
+    (1) When using the DT we feed it data and allow for it to determine when to stop (by issuing the 'wait' command). The last 512 tokens observed by the DT are then used as training data for the QA model. 
+    (2) A set of heuristics allows for us to determine which states to use for training that differ for each question-type.
+    
+    For the purposes of our paper, we used the Decision Transformer method.
 
+    :param model: QA model to be trained
+    :param optimizer: optimizer to be used for training. Weights and decay determined before passing.
+    :param loss_fn: loss function to be used
+    :param batch_size: batch size
+    :param dataset: name of the dataset with which to load data from
+    :param num_workers: number of workers used for dataloader
+    :param decision_transformer: Decision Transformer model used for determining training set (see paper).
+    :param get_batch: method used for processing batches of data into correct format.
+
+    """
     def __init__(
         self,
-        model, 
+        model : QuestionAnsweringModule, 
         optimizer,
-        loss_fn,
+        loss_fn : function,
         batch_size=4,
         get_batch=None,
         dataset="dqn_loc.json",
@@ -534,7 +582,12 @@ class QuestionAnsweringTrainer(Trainer):
 
 
 class SequenceTrainer(Trainer):
+    """
+    Trainer class for training Decision Transformer.
 
+    :returns: loss of action, modifier, and object prediction as well as answer
+
+    """
     def train_step(self):
         states, actions, rewards, rtg, timesteps, attention_mask, answer_targets, state_mask, action_mask = self.get_batch(self.batch_size)
 

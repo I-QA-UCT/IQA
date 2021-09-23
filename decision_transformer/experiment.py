@@ -176,7 +176,13 @@ def experiment(
         
         return s, a, r, rtg, timesteps, mask, ans, state_mask, action_mask
 
-    def eval_episodes(model, iter_num=0):
+    def eval_episodes(model, iter_num=0) -> dict:
+        """
+        Function to be passed to Trainer for validation.
+        :param mode: model to validated
+        :iter_num: iteration of training loop
+        :returns: dictionary of scores/accuracies of QAit evaluation
+        """
         eval_qa_reward, eval_sufficient_info_reward = 0.0, 0.0
         # evaluate
         data_dir = "./"
@@ -273,6 +279,10 @@ def qa_experiment(
     exp_prefix,
     variant
 ):
+    """
+    Method for running QA model experiment.
+
+    """
     device = variant.get('device', 'cuda') # cuda or cpu
 
     log_to_wandb = variant.get('log_to_wandb', False)
@@ -352,11 +362,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='random_rollout')
     parser.add_argument('--dataset', type=str, default='medium')  # medium, medium-replay, medium-expert, expert
-    parser.add_argument('--mode', type=str, default='normal')  # normal for standard setting, delayed for sparse
-    parser.add_argument('--K', type=int, default=5)
+    parser.add_argument('--K', type=int, default=5) # context window of DT
     parser.add_argument('--pct_traj', type=float, default=1.)
     parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--model_type', type=str, default='dt')  # dt for decision transformer, bc for behavior cloning
+    parser.add_argument('--model_type', type=str, default='dt')  # dt for decision transformer, qa for question-anwering model
     parser.add_argument('--embed_dim', type=int, default=64)
     parser.add_argument('--n_layer', type=int, default=2)
     parser.add_argument('--n_head', type=int, default=8)
@@ -370,18 +379,18 @@ if __name__ == '__main__':
     parser.add_argument('--num_steps_per_iter', type=int, default=10)
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--log_to_wandb', '-w', type=bool)
-    parser.add_argument('--state_context_window', '-state', type=int, default=170)
+    parser.add_argument('--state_context_window', '-state', type=int, default=170) # size of context window for qa, or size of each state for dt
     parser.add_argument('--vocab_size', '-vocab', type=int, default=1654)
     parser.add_argument('--embed_type', type=str, default="normal")
     parser.add_argument('--model_out', type=str, default="./decision_transformer/saved_models")
-    parser.add_argument('--eval_per_iter', type=int, default=1)
-    parser.add_argument('--num_workers', type=int, default=2)
+    parser.add_argument('--eval_per_iter', type=int, default=1) # num of iterations before evaluating 
+    parser.add_argument('--num_workers', type=int, default=2) # workers for dataloader
     parser.add_argument('--pretrained_model' ,type=str, default="longformer")
     parser.add_argument('--question_type', '-qt' ,type=str, default="location")
-    parser.add_argument('--random_map', '-mt' ,type=bool)
-    parser.add_argument('--warmup_iterations' ,type=int, default=500)
+    parser.add_argument('--random_map', '-mt' ,type=bool) # map type: random or fixed
+    parser.add_argument('--warmup_iterations' ,type=int, default=500) # how many iterations to wait before starting to save model
     parser.add_argument('--max_ep_length', "-len" ,type=int, default=50)
-    parser.add_argument('--load_dt', "-load" ,type=str)
+    parser.add_argument('--load_dt', "-load" ,type=str) # will DT be used in training QA model
 
     args = vars(parser.parse_args())
 
