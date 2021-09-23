@@ -13,6 +13,10 @@ class DecisionTransformer(nn.Module):
 
     """
     This model uses GPT to model (Return_1, state_1, action_1, Return_2, state_2, ...)
+    
+    :param state_dim: dimension of state or length of state-string to be used as context for action generation
+    :param act_dim: action dimension.
+
     """
 
     def __init__(
@@ -240,6 +244,19 @@ class DecisionTransformer(nn.Module):
         return action_dist.sample(), modifier_dist.sample(), object_dist.sample(), torch.argmax(answer_pred[-1,-1])
         
 class QuestionAnsweringModule(nn.Module):
+    """
+    Question answering module for QAit task
+
+    :param vocab_size: size of the vocab 
+    :param hidden_size: embedding dimension
+    :param context_window: the number of tokens to be used as context for question-answering
+    :param question_type: the type of question being answered
+    :param pretrained_model: name of pretrained model to be used for QA ('bert' or 'longformer')
+    :param `**kwargs`: key word arguments for longformer
+    :raises NotImplementedError: if a question_type is not equal to attribute, location, or existence
+    """
+
+
     def __init__(
         self, 
         vocab_size, 
@@ -277,8 +294,10 @@ class QuestionAnsweringModule(nn.Module):
         self.context_window = context_window
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
+        # if question type is location, set vocab size to pre-determined size
         if self.question_type == "location":
             self.vocab_size = vocab_size
+        # else if it is attribute or existence, set vocab_size to 2
         elif self.question_type in ["attribute", "existence"]:
             self.vocab_size = 2
         else:

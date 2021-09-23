@@ -28,8 +28,10 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def create_evaluation_sets(agent, variant):
-
+def create_evaluation_sets(agent : Agent, variant : dict):
+    """
+    Method used to create sets of online TextWorld games for validation of model.
+    """
     question_types = ["location", "attribute", "existence"]
     random_map_types = [False, True]
     game_no = variant["games"]
@@ -104,7 +106,7 @@ if __name__ == '__main__':
     # Load in agent for config purposes
     agent = Agent()
 
-    parser = argparse.ArgumentParser(description="Parameters for evalu")
+    parser = argparse.ArgumentParser(description="Parameters for validation set")
     parser.add_argument("--games","-g",type=int,
                         default=1,)
 
