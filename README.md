@@ -21,6 +21,22 @@ pip install transformers==4.9.2
 ## Test Set
 Download the test set from [https://aka.ms/qait-testset](https://aka.ms/qait-testset). Unzip it.
 
+## Note
+Adapted from Chen et al.:
+```
+/decision_transformer/model_qait.py # contains base classes for Decision Transformer and QA model
+/decision_transformer/trainer_qait.py # methods for training classes in model_qait.py
+/decision_transformer/experiment.py # driver class - experiment details are specified here with command line args.
+```
+
+Minor changes made to Yuan et al.'s QAit codebase, namely:
+```
+agent.py # Added functionality to take in Decision Transformer and QA model
+evaluate.py # can be used to evaluate DT or DT-BERT
+reward_helper.py # functionality created for intermediate rewards
+```
+
+Please look in the `/decision_transformer/` directory at the foll 
 
 ## Validation Set
 Run the following python command to generate validation set:
