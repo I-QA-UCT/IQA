@@ -43,7 +43,7 @@ request_infos = textworld.EnvInfos(description=True,
 def train(variant):
     """
     Train the agent
-    :param data_path: path to directory where test set folder is 
+    :variant: dictionary of command line values used to random rollout collection
     """
 
     game_information_pattern = re.compile(r"(.*) <\|> -= (.*) = -(.*)<\|> (.*)")
@@ -286,7 +286,6 @@ def train(variant):
             
             ### End of action peforming loop - Now performs Question Answering
 
-        #   print(" / ".join(print_cmds))
             # The agent has exhausted all steps, now answer question.
             # Get most recent observation
             answerer_input = agent.naozi.get()
@@ -427,7 +426,6 @@ def train(variant):
                     files_to_delete.append(gamefile)
                     files_to_delete.append(gamefile.replace(".ulx", ".json"))
                     files_to_delete.append(gamefile.replace(".ulx", ".ni"))
-                # print("rm -f {}".format(" ".join(files_to_delete)))
                 os.system("rm -f {}".format(" ".join(files_to_delete)))
             episode_no += batch_size
 
@@ -475,9 +473,6 @@ if __name__ == '__main__':
     parser.add_argument("--environment","-env",
                     default="random_rollouts",
                     help="The type of offline RL being recorded.")
-    # parser.add_argument("--experiment_id","-id",
-    #                 default="random_rollouts",
-    #                 help="Experiment ID.")
     parser.add_argument("--data_out_path","-out",
                     default="./decision_transformer/data",
                     help="Output path of recorded trajectories.")
