@@ -36,8 +36,6 @@ evaluate.py # can be used to evaluate DT or DT-BERT
 reward_helper.py # functionality created for intermediate rewards
 ```
 
-Please look in the `/decision_transformer/` directory at the foll 
-
 ## Validation Set
 Run the following python command to generate validation set:
 ```
