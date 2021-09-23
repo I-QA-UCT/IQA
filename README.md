@@ -23,6 +23,9 @@ Implementation of ICM module to use as regularization technique for semantic enc
 ## Running Changes
 Alot of effort went into making all the original code unchanged with regards to execution and due to this all code is implemented with respect to the config file meaning all new changes and modifications can simply be turned off and the original methods can run. All changes are implemented in conjunction with existing code so mixing and matching methods are possible within the config file.
 
+## Docs
+Navigate to docs/build/index.html for a docs website.
+
 ## To install dependencies
 ```
 sudo apt update
