@@ -325,7 +325,6 @@ def evaluate(data_path : str, agent : Agent, variant : dict , model=None) -> tup
             r_sufficient_info = np.mean(np.sum(sufficient_info_reward_np, -1))
             print_qa_reward.append(r_qa)
             print_sufficient_info_reward.append(r_sufficient_info)
-            # print(f"===== Eval =====: qa acc: {np.mean(print_qa_reward)} | bert qa acc {np.mean(print_qa_reward_bert)} | correct state: {np.mean(print_sufficient_info_reward)}")
 
         env.close()
 
