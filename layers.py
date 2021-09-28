@@ -530,7 +530,9 @@ class MergeEmbeddings(torch.nn.Module):
         return emb
 
 class Transformer(torch.nn.Module):
-
+    """
+    A Transformer Encoder as described by the paper: <https://arxiv.org/abs/1706.03762>
+    """
     def __init__(self, hidden_size, num_layers, transformer_heads, dropout, device, intermediate_fac=2):
         super().__init__()
         self.hidden_size = hidden_size
@@ -543,8 +545,10 @@ class Transformer(torch.nn.Module):
     @staticmethod
     def pad(vecs, device):
         """
-            pytorches transformer layer wants 1=pad, 0=seq
-            it also wants (seq, batch, emb)
+        Pads a batch to be processed by the transformer layer. Pytorch's transformer layer wants 1=pad, 0=seq
+        :param vecs: A list containing graphs, where each graph is a list of node features.
+        :return batch: A batch of graphs which are padded to all be of equal length in nodes.
+        :return masks: A mask entailing which nodes are from the padding process.     
         """
         lengths = [ex.size(-2) for ex in vecs]
         max_len = max(lengths)
@@ -552,13 +556,13 @@ class Transformer(torch.nn.Module):
         masks = torch.tensor(masks, device=device)
         batch = pad_sequence(vecs, batch_first=False)
 
-        # print("mask:", masks.size(), masks)
-        # print("batch:", batch.size())
         return batch, masks     
 
 _shape_t = Union[int, List[int], Size]
 class LayerNorm(torch.nn.Module):
-    
+    """
+    Applies Layer Normalization over a mini-batch of inputs. Taken directly from the Pytorch library and can be found at: https://pytorch.org/docs/stable/_modules/torch/nn/modules/normalization.html#LayerNorm
+    """
     __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
     normalized_shape: Tuple[int, ...]
     eps: float

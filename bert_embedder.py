@@ -6,11 +6,7 @@ import os
 
 class BertEmbedder(nn.Module):
     """
-    sizes available:
-                tiny (L=2, H=128)
-                mini (L=4, H=256)
-                small (L=4, H=512)
-                medium (L=8, H=512)
+    A pre-trained BERT embedder class. 
     """
 
     def __init__(self, size, bert_fine_tune_layers, device):
@@ -53,15 +49,12 @@ class BertEmbedder(nn.Module):
     def embed(self, string):
         encoding = self.tokenizer(string, return_tensors="pt")
         input_ids = encoding["input_ids"].to(self.device)
-        # print("in ids:", input_ids.size())
 
         if input_ids.size(-1) > 512:
             raise TooManyTokens("too many tokens:", input_ids.size(-1))
-        # print("input ids:", input_ids.size())
-        out = self.model(input_ids=input_ids)#, attention_mask=attention_mask)
+        out = self.model(input_ids=input_ids)
 
         last_hidden_state = out["last_hidden_state"]
-        # print("last:", last_hidden_state.size())
         return last_hidden_state
     
     def forward(self, string, **kwargs):
@@ -75,6 +68,3 @@ class TooManyTokens(Exception):
 
 def num_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-if __name__ == "__main__":
-    embedder = BertEmbedder("mini", [])

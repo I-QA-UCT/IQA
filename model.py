@@ -83,7 +83,7 @@ class DQN(torch.nn.Module):
         Create the layers of the DQN
         """
         params = self.config['gat']
-        self.GAT = StateNetwork(params=params,  device=self.device)
+        self.gat = GATContainer(params=params,  device=self.device)
         
         # word embeddings
         if self.use_pretrained_embedding:
@@ -254,13 +254,21 @@ class DQN(torch.nn.Module):
                 self.question_answerer_output_2.zero_noise()
 
 class GAT(torch.nn.Module):
+    """
+    The actual Graph Attention Network class.
+    """
     def __init__(self, num_features, num_hidden, num_class, num_heads, dropout, alpha, device):
         super(GAT, self).__init__()
         self.dropout = dropout
         self.device = device
-        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout).to(self.device)
+        self.attentions = GATConv(in_channels=num_features, out_channels=num_hidden, heads=num_heads, concat=True, negative_slope=alpha, dropout=dropout).to(self.device) #The Graph Attention Layer
         
     def forward(self, graph_rep):
+        """
+        Forward call for the GAT. Inputs the graph state representation into the Graph Attention Layer.
+        :param graph_rep:  Data object containing entities' vector representation and a list of edge indices.
+        :return x: The transformed set of output features of each node in the entire graph.
+        """
         x = graph_rep.x
         adj = graph_rep.edge_index
         x = F.dropout(x, self.dropout, training=self.training)
@@ -268,9 +276,12 @@ class GAT(torch.nn.Module):
         x = F.dropout(x, self.dropout, training=self.training)
         return x
 
-class StateNetwork(torch.nn.Module):
+class GATContainer(torch.nn.Module):
+    """
+    The GATContainer class contains both the Graph Attention Network and Transformer Encoder and utilises them to produce a fixed length graph representation at each time step.
+    """
     def __init__(self, params, device):
-        super(StateNetwork,self).__init__()
+        super(GATContainer,self).__init__()
         self.params = params
         self.device = device
         self.bert_size = params['bert_size']
@@ -284,11 +295,20 @@ class StateNetwork(torch.nn.Module):
         else:
             features = 512 #Small or medium
 
-        self.GAT = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'], device=self.device)
+        #Initialise GAT and transformer encoder
+        self.gat = GAT(num_features=features, num_hidden=params['num_hidden'], num_class=params['out_features'], num_heads=params['num_heads'], dropout=params['dropout'], alpha=params['alpha'], device=self.device)
         self.transformer = Transformer(hidden_size=params['out_features'], num_layers=params['transformer']['num_layers'], transformer_heads = params['transformer']['transformer_heads'], dropout=params['transformer']['dropout'], device=self.device)
 
     def forward(self, graph_rep, batch_num_nodes):
-        x = self.GAT(graph_rep)
+        """
+        Forward call for the GAT container. Inputs the graph state representation into the GAT and summarises the outputs using the transformer.
+        :param graph_rep: Data object containing entities' vector representation and a list of edge indices.
+        :param batch_num_nodes: List containing the number of entities in each graph in the batch.
+        :return out: The final output of the transformer, which is the summarised GAT output.
+        """
+        x = self.gat(graph_rep)
+
+        #Break batch up into its appropriate graphs
         count = 0
         graph_list = []
         for num in batch_num_nodes:
@@ -296,7 +316,7 @@ class StateNetwork(torch.nn.Module):
             graph_list.append(graph)
             count += num
 
-        batch, masks = self.transformer.pad(vecs=graph_list, device=self.device)
+        batch, masks = self.transformer.pad(vecs=graph_list, device=self.device) #pad items in the batch to be of equal lengh for transformer
         out = self.transformer.encoder(src=batch, src_key_padding_mask=masks).permute(1,0,2)
         out = out[:,-1,:]
 

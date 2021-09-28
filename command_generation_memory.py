@@ -4,7 +4,7 @@ import torch
 
 
 # a snapshot of state to be stored in replay memory
-Transition = namedtuple('Transition', ('ents','adj_mat','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
+Transition = namedtuple('Transition', ('ents','edge_ind','observation_list', 'quest_list', 'possible_words', 'word_indices', 'reward', 'is_final'))
 
 
 class PrioritizedReplayMemory(object):
@@ -69,7 +69,7 @@ class PrioritizedReplayMemory(object):
 
             # all good
             ents = which_memory[head].ents
-            adj_mat = which_memory[head].adj_mat
+            edge_ind = which_memory[head].edge_ind
             obs = which_memory[head].observation_list
             quest = which_memory[head].quest_list
             possible_words = which_memory[head].possible_words
@@ -78,13 +78,13 @@ class PrioritizedReplayMemory(object):
             next_obs = which_memory[head + n].observation_list
             next_possible_words = which_memory[head + n].possible_words
             next_ents = which_memory[head + n].ents
-            next_adj_mat= which_memory[head + n].adj_mat
+            next_edge_ind= which_memory[head + n].edge_ind
 
 
             rewards_up_to_next_final = [self.discount_gamma ** i * which_memory[head + i].reward for i in range(next_final - head + 1)]
             reward = torch.sum(torch.stack(rewards_up_to_next_final))
 
-            return (ents, next_ents, adj_mat, next_adj_mat, obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
+            return (ents, next_ents, edge_ind, next_edge_ind, obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n)
 
     def _get_batch(self, n_list, which_memory):
         res = []
@@ -117,18 +117,18 @@ class PrioritizedReplayMemory(object):
         if res_beta is not None:
             res += res_beta
 
-        ents_list, next_ents_list, adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, word_indices_list = [],[], [], [], [], [],[],[]
+        ents_list, next_ents_list, edge_ind_list, next_edge_ind_list, obs_list, quest_list, possible_words_list, word_indices_list = [],[], [], [], [], [],[],[]
         reward_list, next_obs_list, next_possible_words_list, actual_n_list = [], [], [], []
 
         for item in res:
 
-            ents, next_ents, adj_mat, next_adj_mat, obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
+            ents, next_ents, edge_ind, next_edge_ind, obs, quest, possible_words, word_indices, reward, next_obs, next_possible_words, n = item
 
             ents_list.append(ents)
             next_ents_list.append(next_ents)
 
-            adj_mat_list.append(adj_mat)
-            next_adj_mat_list.append(next_adj_mat)
+            edge_ind_list.append(edge_ind)
+            next_edge_ind_list.append(next_edge_ind)
 
             obs_list.append(obs)
             quest_list.append(quest)
@@ -144,7 +144,7 @@ class PrioritizedReplayMemory(object):
         rewards = torch.stack(reward_list, 0)  # batch
         actual_n_list = np.array(actual_n_list)
 
-        return ents_list, next_ents_list, adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
+        return ents_list, next_ents_list, edge_ind_list, next_edge_ind_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list
 
     def __len__(self):
         return len(self.alpha_memory) + len(self.beta_memory)

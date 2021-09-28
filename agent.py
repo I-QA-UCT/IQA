@@ -16,7 +16,7 @@ from layers import compute_mask, NegativeLogLoss
 from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences
 from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
-import KG
+import knowledge_graph
 from torch_geometric.data import Data
 
 class Agent:
@@ -47,7 +47,7 @@ class Agent:
             self.online_net.cuda()
             self.target_net.cuda()
 
-        self.state = KG.SupplementaryKG(self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
+        self.kg = knowledge_graph.KnowledgeGraph(self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
         bert_size = self.config['gat']['bert_size']
         if bert_size == 'tiny':
             self.bert_size_int = 128
@@ -450,7 +450,7 @@ class Agent:
             chosen_indices = word_indices_random
             chosen_strings = self.get_chosen_strings(chosen_indices)
 
-            self.state.step(self.get_state_strings(infos)[0], commands[0])
+            self.kg.step(self.get_state_strings(infos)[0], commands[0])
 
             for i in range(batch_size):
                 if chosen_strings[i] == "wait":
@@ -477,8 +477,8 @@ class Agent:
             local_word_masks_np = self.get_local_word_masks(possible_words)
             local_word_masks = [to_pt(item, self.use_cuda, type="float") for item in local_word_masks_np]
     
-            self.state.step(self.get_state_strings(infos)[0], commands[0])
-            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            self.kg.step(self.get_state_strings(infos)[0], commands[0])
+            gat_out = self.online_net.gat(self.kg.graph_state_rep, [len(self.kg.graph_state_rep.x)])
 
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
@@ -533,8 +533,8 @@ class Agent:
             # generate commands for one game step, epsilon greedy is applied, i.e.,
             # there is epsilon of chance to generate random commands
 
-            self.state.step(self.get_state_strings(infos)[0], commands[0] )
-            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            self.kg.step(self.get_state_strings(infos)[0], commands[0] )
+            gat_out = self.online_net.gat(self.kg.graph_state_rep, [len(self.kg.graph_state_rep.x)])
 
             action_ranks = self.get_ranks(input_observation, input_observation_char, input_quest, input_quest_char, local_word_masks, gat_out, use_model="online")  # list of batch x vocab
             word_indices_maxq = self.choose_maxQ_command(action_ranks, local_word_masks)
@@ -576,17 +576,19 @@ class Agent:
         if data is None:
             return None
 
-        ents_list, next_ents_list, adj_mat_list, next_adj_mat_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
+        ents_list, next_ents_list, edge_ind_list, next_edge_ind_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         
+        #The following chunk of code extracts the batch information from the replay buffer. 
+        #The batch information is then used to construct the state representation used as input into the GAT container.
         temp1 = []
         temp2 = []
         kg_info_data = []
         next_kg_info_data = []
-        for ents, next_ents, adj_mat, next_adj_mat in zip(ents_list, next_ents_list, adj_mat_list, next_adj_mat_list):
-            edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
+        for ents, next_ents, edge_ind, next_edge_ind in zip(ents_list, next_ents_list, edge_ind_list, next_edge_ind_list):
+            edge_index = torch.tensor(edge_ind, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                embeds.append(self.state.bert_lookup[i])
+                embeds.append(self.kg.bert_lookup[i])
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
                 temp1.append(1)
@@ -595,10 +597,10 @@ class Agent:
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
-            next_edge_index = torch.tensor(next_adj_mat, dtype=torch.long, device = self.device)
+            next_edge_index = torch.tensor(next_edge_ind, dtype=torch.long, device = self.device)
             next_embeds = []
             for i in list(next_ents.keys()):
-                next_embeds.append(self.state.bert_lookup[i])
+                next_embeds.append(self.kg.bert_lookup[i])
             if len(next_embeds) == 0:
                 next_embeds = [torch.zeros(self.bert_size_int, device = self.device)]
                 temp2.append(1)
@@ -614,12 +616,12 @@ class Agent:
         loader = DataLoader(kg_info_data, batch_size=batch_size)
         
         batch = next(iter(loader))
-        gat_out = self.online_net.GAT(batch, temp1)
+        gat_out = self.online_net.gat(batch, temp1)
 
         next_loader = DataLoader(next_kg_info_data, batch_size=batch_size)
         next_batch = next(iter(next_loader))
 
-        next_gat_out = self.online_net.GAT(next_batch,temp2)
+        next_gat_out = self.online_net.gat(next_batch,temp2)
         
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
         input_observation, input_observation_char, _ =  self.get_agent_inputs(obs_list)
@@ -779,7 +781,7 @@ class Agent:
     def answer_question_act_greedy(self, input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char):
 
         with torch.no_grad():
-            gat_out = self.online_net.GAT(self.state.graph_state_rep, [len(self.state.graph_state_rep.x)])
+            gat_out = self.online_net.gat(self.kg.graph_state_rep, [len(self.kg.graph_state_rep.x)])
             vocab_distribution, _, vocab_mask = self.answer_question(input_observation, input_observation_char, observation_id_list, input_quest, input_quest_char,gat_out, use_model="online")  # batch x time
             positions_maxq = self.point_maxq_position(vocab_distribution, vocab_mask)
             return positions_maxq  # batch
@@ -794,15 +796,17 @@ class Agent:
         transitions = self.qa_replay_memory.sample(self.replay_batch_size)
         batch = qa_memory.qa_Transition(*zip(*transitions))
 
+        #The following chunk of code extracts the batch information from the replay buffer. 
+        #The batch information is then used to construct the state representation used as input into the GAT container.
         ents_list = batch.ents
-        adj_mat_list = batch.adj_mat
+        edge_ind_list = batch.edge_ind
         temp1 = []
         kg_info_data = []
-        for ents, adj_mat in zip(ents_list, adj_mat_list):
-            edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
+        for ents, edge_ind in zip(ents_list, edge_ind_list):
+            edge_index = torch.tensor(edge_ind, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                embeds.append(self.state.bert_lookup[i])
+                embeds.append(self.kg.bert_lookup[i])
 
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
@@ -815,7 +819,7 @@ class Agent:
         #Check kg_info_data
         loader = DataLoader(kg_info_data, batch_size=self.replay_batch_size)
         batch_gat = next(iter(loader))
-        gat_out = self.online_net.GAT(batch_gat, temp1)
+        gat_out = self.online_net.gat(batch_gat, temp1)
 
         observation_list = batch.observation_list
         quest_list = batch.quest_list

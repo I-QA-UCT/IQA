@@ -20,7 +20,6 @@ import reward_helper
 import game_generator
 import evaluate
 from query import process_facts
-from entity_relation_collection import get_entity_relation
 
 # Information outputted from environment besides observation
 request_infos = textworld.EnvInfos(description=True,
@@ -65,11 +64,9 @@ def train(data_path):
         if os.path.exists(output_dir + "/" + agent.experiment_tag + "_model.pt"):
             agent.load_pretrained_model(output_dir + "/" + agent.experiment_tag + "_model.pt")
             agent.update_target_net()
-            # agent.state.set_entities(output_dir + "/" + agent.experiment_tag + "_entities.txt")
         elif os.path.exists(data_dir + "/" + agent.load_from_tag + ".pt"):
             agent.load_pretrained_model(data_dir + "/" + agent.load_from_tag + ".pt")
             agent.update_target_net()
-            # agent.state.set_entities(data_dir + "/" + agent.experiment_tag + "_entities.txt")
         else:
             print("Failed to load pretrained model... couldn't find the checkpoint file...")
 
@@ -139,7 +136,7 @@ def train(data_path):
         # Start game - get initial observation and infos
         obs, infos = env.reset()
         batch_size = len(obs)
-        agent.state.reset_state()
+        agent.kg.reset_state()
         
         # generate question-answer pairs here
         questions, answers, reward_helper_info = game_generator.generate_qa_pairs(infos, question_type=agent.question_type, seed=episode_no)
@@ -218,7 +215,7 @@ def train(data_path):
             for i in range(batch_size):
                 commands_per_step[i].append(commands[i])
 
-            replay_info = [copy.deepcopy(agent.state.entities), agent.state.adj_matrix, observation_strings_w_history, questions, possible_words] + replay_info
+            replay_info = [copy.deepcopy(agent.kg.entities), agent.kg.edge_indices, observation_strings_w_history, questions, possible_words] + replay_info
 
             # get the real admissible commands from environment i.e the true valid commands for the game step
             admissible_commands = [set(item) - set(["look", "wait", "inventory"]) for item in infos["admissible_commands"]]
@@ -321,7 +318,7 @@ def train(data_path):
             # if the agent is not in the correct state, do not push it into replay buffer
             if np.sum(sufficient_info_reward_np[b]) == 0.0:
                 continue
-            agent.qa_replay_memory.push(False, qa_reward_np[b], copy.deepcopy(agent.state.entities), agent.state.adj_matrix, answerer_input[b], questions[b], answers[b])
+            agent.qa_replay_memory.push(False, qa_reward_np[b], copy.deepcopy(agent.kg.entities), agent.kg.edge_indices, answerer_input[b], questions[b], answers[b])
 
         # assign sufficient info reward and counting reward to the corresponding steps
         counting_rewards_np = np.stack(counting_rewards_np, 1)  # batch x game step
@@ -336,12 +333,12 @@ def train(data_path):
         for b in range(batch_size):
             is_prior = np.sum(command_rewards_np[b], 0) > 0.0
             for i in range(len(transition_cache)):
-                batch_ents, batch_adj_mat, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
+                batch_ents, batch_edge_ind, batch_observation_strings, batch_question_strings, batch_possible_words, batch_chosen_indices, _, batch_rewards = transition_cache[i]
                 is_final = True
                 if masks_np[i][b] != 0:
                     is_final = False
                   
-                agent.command_generation_replay_memory.push(is_prior, batch_ents, batch_adj_mat, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
+                agent.command_generation_replay_memory.push(is_prior, batch_ents, batch_edge_ind, batch_observation_strings[b], batch_question_strings[b], [item[b] for item in batch_possible_words], [item[b] for item in batch_chosen_indices], batch_rewards[b], is_final)
 
                 if masks_np[i][b] == 0.0:
                     break
@@ -371,7 +368,7 @@ def train(data_path):
             # print("rm -f {}".format(" ".join(files_to_delete)))
             os.system("rm -f {}".format(" ".join(files_to_delete)))
         episode_no += batch_size
-        print("Total Entities:", len(agent.state.bert_lookup.keys()))
+        print("Total Entities:", len(agent.kg.bert_lookup.keys()))
         time_2 = datetime.datetime.now()
         print("Episode: {:3d} | time spent: {:s} | interaction loss: {:2.3f} | qa loss: {:2.3f} | rewards: {:2.3f} | qa acc: {:2.3f}/{:2.3f} | correct state: {:2.3f}/{:2.3f}".format(episode_no, str(time_2 - time_1).rsplit(".")[0], running_avg_correct_state_loss.get_avg(), running_avg_qa_loss.get_avg(), print_rewards, r_qa, running_avg_qa_reward.get_avg(), r_sufficient_info, running_avg_sufficient_info_reward.get_avg()))
 

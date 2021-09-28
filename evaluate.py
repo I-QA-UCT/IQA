@@ -88,7 +88,7 @@ def evaluate(data_path, agent,print_game=False,print_f1_score=True):
                 reward_helper_info["_attributes"] = data_attributes[q_no: q_no + 1]
 
             obs, infos = env.reset()
-            agent.state.reset_state()
+            agent.kg.reset_state()
             batch_size = len(obs)
             agent.eval()
             agent.init(obs, infos)

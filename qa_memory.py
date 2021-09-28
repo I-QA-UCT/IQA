@@ -4,7 +4,7 @@ from collections import namedtuple
 
 
 # a snapshot of state to be stored in replay memory
-qa_Transition = namedtuple('qa_Transition', ('ents', 'adj_mat','observation_list', 'quest_list', 'answer_strings'))
+qa_Transition = namedtuple('qa_Transition', ('ents', 'edge_ind','observation_list', 'quest_list', 'answer_strings'))
 
 
 class PrioritizedReplayMemory(object):
