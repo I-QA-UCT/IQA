@@ -529,49 +529,6 @@ class MergeEmbeddings(torch.nn.Module):
             emb = emb * mask.unsqueeze(-1)
         return emb
 
-class GATlayer(torch.nn.Module):
-
-    def __init__(self, in_features, out_features, dropout, alpha, concat=False):
-        super(GATlayer, self).__init__() 
-        self.dropout = dropout
-        self.alpha = alpha
-        self.in_features = in_features
-        self.out_features = out_features
-        self.concat = concat
-        self.activation = torch.nn.LeakyReLU(self.alpha)
-
-        self.weights = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(in_features, out_features).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
-        self.attentional_mech = torch.nn.Parameter(torch.nn.init.xavier_uniform_(torch.Tensor(2*out_features, 1).type(torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor), gain=np.sqrt(2.0)), requires_grad=True)
-    
-    def forward(self,input, adj):
-        h = torch.mm(input, self.weights) #matrix multiplication to obtain W_h_i
-        h_size = h.size()[0]
-        
-        attention_input = torch.cat( [h.repeat(1,h_size).view(h_size*h_size,-1), h.repeat(h_size,1)] , dim=1).view(h_size, -1, 2 * self.out_features)
-        e_ij =torch.matmul(attention_input, self.attentional_mech) #computes attention coefficients
-        softmax_input = self.activation(e_ij).squeeze(2) #input into the softmax function
-
-        zeros = torch.zeros_like(softmax_input) #Tensor filled with 0s of size softmax_input
-        zeros = zeros.fill_(9e-15) #Fills tensor with value
-    
-        attention = torch.where(adj >0, softmax_input, zeros) #if else on tensor
-        attention = F.softmax(attention,dim=1)
-        attention = F.dropout(attention, self.dropout, training = self.training)
-        
-        h_prime = torch.matmul(attention, h)
-
-        if self.concat:
-            return F.elu(h_prime)
-        else:
-            return h_prime
-
-        #TODO: Look into multi-head attention
-        #TODO: Look into potentially adding nonlinearity coefficient to h_prime
-
-
-    def __repr__(self):
-        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
-
 class Transformer(torch.nn.Module):
 
     def __init__(self, hidden_size, num_layers, transformer_heads, dropout, device, intermediate_fac=2):

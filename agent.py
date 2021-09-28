@@ -1,7 +1,4 @@
-import random
 import yaml
-import copy
-from collections import namedtuple
 from os.path import join as pjoin
 
 import spacy
@@ -14,14 +11,13 @@ from torch_geometric.data import DataLoader
 
 import command_generation_memory
 import qa_memory
-from model import DQN, StateNetwork
+from model import DQN
 from layers import compute_mask, NegativeLogLoss
 from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences
 from generic import max_len, ez_gather_dim_1, ObservationPool
 from generic import list_of_token_list_to_char_input
 import KG
 from torch_geometric.data import Data
-from bert_embedder import BertEmbedder
 
 class Agent:
     def __init__(self):
@@ -51,8 +47,7 @@ class Agent:
             self.online_net.cuda()
             self.target_net.cuda()
 
-        # params = self.config['gat']
-        self.state = KG.SupplementaryKG(self.config['gat']['use_bert'],self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
+        self.state = KG.SupplementaryKG(self.config['gat']['bert_size'], self.device, self.config['gat']['openIE_port'])
         bert_size = self.config['gat']['bert_size']
         if bert_size == 'tiny':
             self.bert_size_int = 128
@@ -62,13 +57,6 @@ class Agent:
             self.bert_size_int = 768
         else:
             self.bert_size_int = 512 #Small or medium
-            
-        # params['vocab_size'] = len(self.state.vocab)
-        # params['use_cuda'] = self.config['general']['use_cuda']
-
-        # self.action_emb = torch.nn.Embedding(params['vocab_size'], params['embedding_size'])
-        # self.GAT = StateNetwork(params=params,  device=self.device, embeddings=None)
-        # self.bert = BertEmbedder(self.config['gat']['bert_size'], [], self.device)
 
         self.naozi = ObservationPool(capacity=self.naozi_capacity)
         # optimizer
@@ -598,15 +586,9 @@ class Agent:
             edge_index = torch.tensor(adj_mat, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                # graph_node_text = i.replace('_', ' ')
-                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                # #Summarizer
-                # node_embedding= node_embedding.mean(dim=0) 
-                # embeds.append(node_embedding)
                 embeds.append(self.state.bert_lookup[i])
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
-                # embeds = [self.state.bert_lookup["you"]]
                 temp1.append(1)
             else:
                 temp1.append(len(ents.keys()))
@@ -616,15 +598,9 @@ class Agent:
             next_edge_index = torch.tensor(next_adj_mat, dtype=torch.long, device = self.device)
             next_embeds = []
             for i in list(next_ents.keys()):
-                # graph_node_text = i.replace('_', ' ')
-                # node_embedding = self.bert.embed(graph_node_text).squeeze(0)
-                # #Summarizer
-                # node_embedding= node_embedding.mean(dim=0)
-                # next_embeds.append(node_embedding)
                 next_embeds.append(self.state.bert_lookup[i])
             if len(next_embeds) == 0:
                 next_embeds = [torch.zeros(self.bert_size_int, device = self.device)]
-                next_embeds = [self.state.bert_lookup["you"]]
                 temp2.append(1)
             else:
                 temp2.append(len(next_ents.keys()))
@@ -830,7 +806,6 @@ class Agent:
 
             if len(embeds) == 0:
                 embeds = [torch.zeros(self.bert_size_int, device = self.device)]
-                # embeds = [self.state.bert_lookup["you"]]
                 temp1.append(1)
             else:
                 temp1.append(len(ents.keys()))

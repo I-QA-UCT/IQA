@@ -3,26 +3,16 @@ import networkx as nx
 import json
 import requests
 import numpy as np
-from nltk import sent_tokenize, word_tokenize
+from nltk import sent_tokenize
 import torch
-import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 from bert_embedder import BertEmbedder
-import os 
-
-def init_openIE():
-    cmd = 'cd stanford-corenlp-4.2.2 && java -mx6g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000 > /dev/null 2>&1 &'
-    os.system(cmd)
-    print("Stanford Open IE initialised and listening on port 9000.")
-
 
 
 class SupplementaryKG(object):
 
-    def __init__(self, use_bert, bert_size, device, port):
+    def __init__(self, bert_size, device, port):
     
-        self.use_bert = use_bert
-        self.vocab, self.vocab_er = self.load_files()
         self.visible_state = "" #What states and relations are currently visible to the agent
         self.room = "" #Room at the centre of KG
         
@@ -37,10 +27,6 @@ class SupplementaryKG(object):
         self.bert = BertEmbedder(bert_size, [], self.device)
         self.embeds = []
         self.bert_lookup = {}
-        node_embedding = self.bert.embed("you").squeeze(0)
-        #Summarizer
-        node_embedding= node_embedding.mean(dim=0)
-        self.bert_lookup["you"] = node_embedding
 
         if bert_size == 'tiny':
             self.bert_size_int = 128
@@ -53,32 +39,6 @@ class SupplementaryKG(object):
 
         self.port = port
 
-    def load_files(self):
-        vocab = {}
-        i = 0
-        with open('vocabularies/word_vocab.txt', 'r') as file_output:
-            for i, line in enumerate(file_output):
-                vocab[line.strip()] = i
-
-        if self.use_bert:
-            return vocab, None
-        else:
-            entities = {}
-            with open("entity2id.tsv", 'r') as file_output:
-                for line in file_output:
-                    entity, entity_id = line.split('\t')
-                    entities[entity.strip()] = int(entity_id.strip())
-
-            relations = {}
-            with open("relation2id.tsv", 'r') as file_output:
-                for line in file_output:
-                    relation, relation_id = line.split('\t')
-                    relations[relation.strip()] = int(relation_id.strip())
-            
-            entity_relation_dict = {'entity': entities, 'relation': relations}
-            
-            return vocab, entity_relation_dict
-
     def openIE(self,sentence):
         url = "http://localhost:" + str(self.port) + "/"
         querystring = {
@@ -87,18 +47,6 @@ class SupplementaryKG(object):
         response = requests.request("POST", url, data=sentence, params=querystring)
         response = json.JSONDecoder().decode(response.text)
         return response
-
-    def set_entities(self, path):
-        file_in = open(path, 'r')
-        self.entities = eval(file_in.readline())
-        self.entity_nums = len(self.entities.keys())
-
-    def visualize(self):
-        pos = nx.spring_layout(self.graph_state)
-        edge_labels = {e: self.graph_state.edges[e]['rel'] for e in self.graph_state.edges}
-        nx.draw_networkx_edge_labels(self.graph_state, pos, edge_labels)
-        nx.draw(self.graph_state, pos=pos, with_labels=True, node_size=200, font_size=10)
-        plt.show()
 
     def update_state(self, visible_state, prev_action=None):
 
@@ -192,8 +140,6 @@ class SupplementaryKG(object):
         
         edges = list(self.graph_state.edges)
 
-        # print("add", add_rules)
-
         #Remove edges from KG that are no longer needed
         for edge in edges:
             relation = self.graph_state[edge[0]][edge[1]]['rel']
@@ -206,27 +152,20 @@ class SupplementaryKG(object):
             self.graph_state.remove_edges_from(prev_you_subgraph.edges)
     
         #Update KG to include new edges and nodes
-        if self.use_bert:
-           for rule in add_rules:
-                u = '_'.join(str(rule[0]).split())
-                v = '_'.join(str(rule[2]).split())
-                if u not in self.entities.keys():
-                    self.entities[u] = self.entity_nums
-                    self.entity_nums += 1
+        for rule in add_rules:
+            u = '_'.join(str(rule[0]).split())
+            v = '_'.join(str(rule[2]).split())
+            if u not in self.entities.keys():
+                self.entities[u] = self.entity_nums
+                self.entity_nums += 1
 
-                if v not in self.entities.keys():
-                    self.entities[v] = self.entity_nums
-                    self.entity_nums += 1
-                
-                if u != 'it' and v != 'it':
-                        self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
-        else:
-            for rule in add_rules:
-                u = '_'.join(str(rule[0]).split())
-                v = '_'.join(str(rule[2]).split())
-                if u in self.vocab_er['entity'].keys() and v in self.vocab_er['entity'].keys():
-                    if u != 'it' and v != 'it':
-                        self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
+            if v not in self.entities.keys():
+                self.entities[v] = self.entity_nums
+                self.entity_nums += 1
+            
+            if u != 'it' and v != 'it':
+                    self.graph_state.add_edge(rule[0], rule[2], rel=rule[1])
+    
 
         if prev_room_subgraph is not None:
             for edge in list(prev_room_subgraph.edges):
@@ -254,7 +193,7 @@ class SupplementaryKG(object):
                 self.embeds.append(node_embedding)
                 self.bert_lookup[entities[i]] = node_embedding
     
-    def get_state_representation_bert(self):
+    def get_state_representation(self):
         
         self.adj_matrix = [[],[]]
 
@@ -273,39 +212,11 @@ class SupplementaryKG(object):
         self.state_ent_emb_bert()
         if len(self.embeds) == 0:
             self.embeds = [torch.zeros(self.bert_size_int, device = self.device)]
-            # self.embeds = [self.bert_lookup["you"]]
         data = Data(x=torch.stack(self.embeds), edge_index=edge_index).to(self.device)
 
         return data
 
-    def get_state_representation(self):
-        
-        result = []
-        self.adj_matrix = np.zeros((len(
-            self.vocab_er['entity']), len(self.vocab_er['entity']))) #Set matrix to zeros
-
-        for source, target in self.graph_state.edges:
-            source = '_'.join(str(source).split()) #Make source and target nodes look the same vocab_er
-            target = '_'.join(str(target).split())
-
-            #Ignore words not in discovered by agent in entity_relation_collection.py
-            if source not in self.vocab_er['entity'].keys() or target not in self.vocab_er['entity'].keys():
-                break
-
-            source_id = self.vocab_er['entity'][source]    
-            target_id = self.vocab_er['entity'][target]      
-            self.adj_matrix[source_id][target_id] = 1 #Update matrix representation to reflect relation between source and target
-
-            result.append(self.vocab_er['entity'][source])
-            result.append(self.vocab_er['entity'][target])
-
-        return list(set(result))
-
     def step(self, visible_state,prev_action=None):
-        
         self.update_state(visible_state, prev_action)
-        if self.use_bert:
-            self.graph_state_rep = self.get_state_representation_bert()
-        else:
-            self.graph_state_rep = self.get_state_representation(), torch.IntTensor(self.adj_matrix, device =self.device)
-
+        self.graph_state_rep = self.get_state_representation()
+       

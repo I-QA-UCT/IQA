@@ -100,9 +100,6 @@ def train(data_path):
         all_training_games = game_generator.game_generator(path=games_dir, random_map=agent.random_map, question_type=agent.question_type, train_data_size=agent.train_data_size)
         all_training_games.sort()
         all_env_ids = None
-    
-    # get_entity_relation(game_info=all_training_games)
-    # get_entity_relation([all_training_games[0]])
 
     ### GAME LOOP
     while(True):
@@ -282,7 +279,7 @@ def train(data_path):
         # rewards
         # qa reward
         qa_reward_np = reward_helper.get_qa_reward(answers, chosen_answers)
-        # print("qa_reward_np", qa_reward_np)
+
         # sufficient info rewards
         masks = [item[-1] for item in transition_cache]
         
@@ -384,41 +381,20 @@ def train(data_path):
             continue
         eval_qa_reward, eval_sufficient_info_reward = 0.0, 0.0
         # evaluate
-        if episode_no <= 25000:
-            suffix = "25k"
-        elif episode_no <= 50000:
-            suffix = "50k"
-        elif episode_no <= 75000:
-            suffix = "75k"
-        elif episode_no <= 100000:
-            suffix = "100k"
-        elif episode_no <= 125000:
-            suffix = "125k"
-        elif episode_no <= 150000:
-            suffix = "150k"
-        elif episode_no <= 175000:
-            suffix = "175k"
-        elif episode_no <= 200000:
-            suffix = "200k"
-        else:
-            suffix = ""
+        
 
         if agent.run_eval:
             eval_qa_reward, eval_sufficient_info_reward = evaluate.evaluate(data_dir, agent)
             # if run eval, then save model by eval accucacy
-            if eval_qa_reward + eval_sufficient_info_reward > best_sum_reward_so_far:
-                best_sum_reward_so_far = eval_qa_reward + eval_sufficient_info_reward
-                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_" + suffix + "_model.pt")
-                # out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
-                # out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
+            if eval_qa_reward > best_sum_reward_so_far:
+                best_sum_reward_so_far = eval_qa_reward
+                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
 
         # save model
         elif agent.save_checkpoint:
-            if running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg() > best_sum_reward_so_far:
-                best_sum_reward_so_far = running_avg_qa_reward.get_avg() + running_avg_sufficient_info_reward.get_avg()
-                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_" + suffix + "_model.pt")
-                # out_file = open(output_dir + "/" + agent.experiment_tag + "_entities.txt", "w")
-                # out_file.write(str({ent: agent.state.entities[ent] for ent in agent.state.entities.keys()}))
+            if running_avg_qa_reward.get_avg() > best_sum_reward_so_far:
+                best_sum_reward_so_far = running_avg_qa_reward.get_avg()
+                agent.save_model_to_path(output_dir + "/" + agent.experiment_tag + "_model.pt")
 
 
        
