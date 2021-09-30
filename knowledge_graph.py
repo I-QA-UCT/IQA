@@ -55,7 +55,7 @@ class KnowledgeGraph(object):
 
     def update_state(self, visible_state, prev_action=None):
         """
-        Updates an agent's KG.
+        Updates an agent's KG using OpenIE and a set of heuristics. Adapted from Ammanabrolu et al. <https://arxiv.org/pdf/1812.01628.pdf>
         :param visible_state: The observation description provided by TextWorld.
         :param prev_action: The previous action performed by the agent, if any.
         """

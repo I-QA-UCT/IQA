@@ -578,19 +578,18 @@ class Agent:
 
         ents_list, next_ents_list, edge_ind_list, next_edge_ind_list, obs_list, quest_list, possible_words_list, chosen_indices, rewards, next_obs_list, next_possible_words_list, actual_n_list = data
         
-        #The following chunk of code extracts the batch information from the replay buffer. 
-        #The batch information is then used to construct the state representation used as input into the GAT container.
-        temp1 = []
-        temp2 = []
-        kg_info_data = []
-        next_kg_info_data = []
+        temp1 = []              #List of integers representing the number of nodes in each graph in the batch
+        temp2 = []      
+        kg_info_data = []       #List of data objects storing the state representation used as input into the GAT container
+        next_kg_info_data = [] 
         for ents, next_ents, edge_ind, next_edge_ind in zip(ents_list, next_ents_list, edge_ind_list, next_edge_ind_list):
+            #Use batch information to construct state representation data objects for each items in the batch.
             edge_index = torch.tensor(edge_ind, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                embeds.append(self.kg.bert_lookup[i])
+                embeds.append(self.kg.bert_lookup[i]) #Get entity's embedding
             if len(embeds) == 0:
-                embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                embeds = [torch.zeros(self.bert_size_int, device = self.device)] #Nodeless graph
                 temp1.append(1)
             else:
                 temp1.append(len(ents.keys()))
@@ -600,9 +599,9 @@ class Agent:
             next_edge_index = torch.tensor(next_edge_ind, dtype=torch.long, device = self.device)
             next_embeds = []
             for i in list(next_ents.keys()):
-                next_embeds.append(self.kg.bert_lookup[i])
+                next_embeds.append(self.kg.bert_lookup[i]) #Get entity's embedding
             if len(next_embeds) == 0:
-                next_embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                next_embeds = [torch.zeros(self.bert_size_int, device = self.device)] #Nodeless graph
                 temp2.append(1)
             else:
                 temp2.append(len(next_ents.keys()))
@@ -614,13 +613,11 @@ class Agent:
         batch_size = len(actual_n_list)
 
         loader = DataLoader(kg_info_data, batch_size=batch_size)
-        
         batch = next(iter(loader))
         gat_out = self.online_net.gat(batch, temp1)
 
         next_loader = DataLoader(next_kg_info_data, batch_size=batch_size)
         next_batch = next(iter(next_loader))
-
         next_gat_out = self.online_net.gat(next_batch,temp2)
         
         input_quest, input_quest_char, _ = self.get_agent_inputs(quest_list)
@@ -796,27 +793,26 @@ class Agent:
         transitions = self.qa_replay_memory.sample(self.replay_batch_size)
         batch = qa_memory.qa_Transition(*zip(*transitions))
 
-        #The following chunk of code extracts the batch information from the replay buffer. 
-        #The batch information is then used to construct the state representation used as input into the GAT container.
         ents_list = batch.ents
         edge_ind_list = batch.edge_ind
-        temp1 = []
-        kg_info_data = []
+
+        temp1 = []        #List of integers representing the number of nodes in each graph in the batch
+        kg_info_data = [] #List of data objects storing the state representation used as input into the GAT container
         for ents, edge_ind in zip(ents_list, edge_ind_list):
+            #Use batch information to construct state representation data objects for each items in the batch.
             edge_index = torch.tensor(edge_ind, dtype=torch.long, device = self.device)
             embeds = []
             for i in list(ents.keys()):
-                embeds.append(self.kg.bert_lookup[i])
+                embeds.append(self.kg.bert_lookup[i]) #Get entity's embedding
 
             if len(embeds) == 0:
-                embeds = [torch.zeros(self.bert_size_int, device = self.device)]
+                embeds = [torch.zeros(self.bert_size_int, device = self.device)] #Nodeless graph
                 temp1.append(1)
             else:
                 temp1.append(len(ents.keys()))
             data = Data(x=torch.stack(embeds), edge_index=edge_index).to(self.device)
             kg_info_data.append(data)
 
-        #Check kg_info_data
         loader = DataLoader(kg_info_data, batch_size=self.replay_batch_size)
         batch_gat = next(iter(loader))
         gat_out = self.online_net.gat(batch_gat, temp1)
