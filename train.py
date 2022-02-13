@@ -38,17 +38,17 @@ request_infos = textworld.EnvInfos(description=True,
                                    extras=["object_locations", "object_attributes", "uuid"])
 
 
-def train(data_path,log_to_wandb):
+def train(data_path, log_to_wandb, config_file_path):
     """
     Train the agent
     :param data_path: path to directory where test set folder is 
     """
 
     time_1 = datetime.datetime.now()
-    agent = Agent()
+    agent = Agent(config_file_path)
 
     if log_to_wandb:
-        wandb.init(config=agent.config,project='IQA', entity='uct-iqa')
+        wandb.init(config=agent.config,project='IQA', entity='uct-iqa', name=agent.config["question_type"]+"_no_games_"+agent.config["train_data_size"]+"_random_map_"+agent.config["random_map"])
         
 
     step_in_total = 0
@@ -531,9 +531,14 @@ if __name__ == '__main__':
     parser.add_argument("--data_path","-d",
                         default="./",type=str,
                         help="where the data (games) are.")
+
+    parser.add_argument("--config_file","-c",
+                        default="./config.yaml",type=str,
+                        help="path to config file")
                          
     parser.add_argument('--log_to_wandb', "-l",
                         action='store_true', help='Log statistics to WandB platform')
+    
     args = parser.parse_args()
     
-    train(args.data_path,args.log_to_wandb)
+    train(args.data_path,args.log_to_wandb, args.config_file)

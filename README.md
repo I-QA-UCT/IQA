@@ -30,7 +30,7 @@ Navigate to docs/build/index.html for a docs website.
 ```
 sudo apt update
 conda create -p ~/venvs/qait python=3.6
-source activate ~/venvs/qait
+conda activate ~/venvs/qait
 pip install --upgrade pip
 pip install numpy==1.16.4
 pip install https://github.com/Microsoft/TextWorld/archive/rebased-interactive-qa.zip
@@ -40,8 +40,7 @@ pip install tqdm pyyaml
 conda install pytorch torchvision torchaudio cudatoolkit=10.2 -c pytorch
 pip install gym==0.15.4
 conda install h5py 
-pip install wandb sklearn
-pip install plotly pandas jsonlines
+pip install wandb sklearn plotly pandas jsonlines
 ```
 
 ## Test Set
