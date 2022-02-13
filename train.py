@@ -48,7 +48,7 @@ def train(data_path, log_to_wandb, config_file_path):
     agent = Agent(config_file_path)
 
     if log_to_wandb:
-        wandb.init(config=agent.config,project='IQA', entity='uct-iqa', name=agent.config["question_type"]+"_no_games_"+agent.config["train_data_size"]+"_random_map_"+agent.config["random_map"])
+        wandb.init(config=agent.config,project='IQA', entity='uct-iqa', name=agent.config["general"]["question_type"]+"_no_games_"+agent.config["general"]["train_data_size"]+"_random_map_"+agent.config["general"]["random_map"])
         
 
     step_in_total = 0
