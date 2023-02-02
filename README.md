@@ -1,4 +1,4 @@
-# QAIT Task Extension - Interactive Question Answering in Text-Based Environments
+# A Sequence Modelling Approach to Question Answering in Text-Based Games
 --------------------------------------------------------------------------------
 Extension to Code for EMNLP 2019 paper "Interactive Language Learning by Question Answering".
 
