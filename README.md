@@ -81,8 +81,16 @@ python evaluate.py -qa existence-500-random_map-qa-module -m existence-500-rando
 
 ## Citation
 
-Please use the following bibtex entry:
+Please use the following bibtex entries for this work:
 ```
+@article{furman2022sequence,
+  title={A Sequence Modelling Approach to Question Answering in Text-Based Games},
+  author={Furman, Greg and Toledo, Edan and Shock, Jonathan and Buys, Jan},
+  journal={Wordplay 2022},
+  pages={44},
+  year={2022}
+}
+
 @article{yuan2019qait,
   title={Interactive Language Learning by Question Answering},
   author={Yuan, Xingdi and C\^ot\'{e}, Marc-Alexandre and Fu, Jie and Lin, Zhouhan and Pal, Christopher and Bengio, Yoshua and Trischler, Adam},
